@@ -1,0 +1,9 @@
+{
+"mq_on":"0",
+"mq_ip":"",
+"mq_port":"5662",
+"mq_user":"",
+"mq_pass":"",
+"topic":"Lamp",
+"mq_prd":"0"
+}
