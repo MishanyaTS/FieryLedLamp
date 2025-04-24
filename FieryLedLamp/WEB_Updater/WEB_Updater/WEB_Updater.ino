@@ -10,9 +10,15 @@
 #include <TM1637Display.h>
 #include <ElegantOTA.h>
 
+#ifdef ESP32_USED
 #define CLK 27  // Пин, подключенный к CLK на TM1637
 #define DIO 13  // Пин, подключенный к DIO на TM1637
 #define BUTTON_PIN 35  // Пин, подключенный к TTP223
+#else
+#define CLK 5   // Пин, подключенный к CLK на TM1637
+#define DIO 14  // Пин, подключенный к DIO на TM1637
+#define BUTTON_PIN 4   // Пин, подключенный к TTP223
+#endif
 
 const char* ssid = "ssid";
 const char* password = "password";
