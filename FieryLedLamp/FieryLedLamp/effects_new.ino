@@ -1615,19 +1615,19 @@ void clearNoiseArr() {
 //---------------------------------------
 void VirtualSnow(byte snow_type) {
   uint8_t posX = random8(WIDTH - 1);
-  const uint8_t maxX = WIDTH - 1;
+  //const uint8_t maxX = WIDTH - 1;
   static int deltaPos;
   byte delta = (snow_type == 3) ? 0 : 1;
   for (uint8_t x = delta; x < WIDTH - delta; x++) {
 
     // заполняем случайно верхнюю строку
     if ((noise3d[0][x][HEIGHT - 2] == 0U) &&  (posX == x) && (random8(0, 2) == 0U)) {
-      noise3d[0][x][HEIGHT] = 1;
+      noise3d[0][x][HEIGHT-1] = 1;
     } else {
-      noise3d[0][x][HEIGHT] = 0;
+      noise3d[0][x][HEIGHT-1] = 0;
     }
 
-    for (uint8_t y = 0U; y < HEIGHT; y++) {
+    for (uint8_t y = 0U; y < HEIGHT - 1; y++) {
       switch (snow_type) {
         case 0:
           noise3d[0][x][y] = noise3d[0][x][y + 1];
