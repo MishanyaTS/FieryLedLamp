@@ -397,8 +397,8 @@ void IR_Power()   {
     {
         ONflag = !ONflag;
         jsonWrite(configSetup, "Power", ONflag);
-        if (!ONflag)  {
-            //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
+        changePower(); // Сначала выключаем матрицу
+        if (!ONflag) {
             timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
             if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
             save_file_changes = 7;
@@ -407,9 +407,8 @@ void IR_Power()   {
         else {
             EepromManager::EepromGet(modes);
             timeout_save_file_changes = millis();
-            bitSet (save_file_changes, 0);
-        }
-        changePower();
+            bitSet(save_file_changes, 0);
+        }       
     }
     loadingFlag = true;
 

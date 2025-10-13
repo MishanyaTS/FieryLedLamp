@@ -510,20 +510,19 @@ void handle_Power ()  {
       jsonWrite(configSetup, "Power", tmp);
       ONflag = tmp;
         if (!ONflag)  {
-            //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
-            timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
-            if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
+            // Немедленное выключение
+            changePower(); // Выключаем матрицу сразу
+            timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT; // Сбрасываем таймер для немедленного сохранения
             save_file_changes = 7;
             Save_File_Changes();
-            //timeTick();
-        }
-        else {
+        } else {
+          // Включение лампы: загружаем настройки из EEPROM
             EepromManager::EepromGet(modes);
             timeout_save_file_changes = millis();
-            bitSet (save_file_changes, 0);
-       }
+            bitSet(save_file_changes, 0);
     changePower();
     loadingFlag = true;
+        }
     }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #ifdef USE_MULTIPLE_LAMPS_CONTROL
@@ -540,7 +539,7 @@ void handle_Power ()  {
       MqttManager::needToPublish = true;
     }
     #endif
-}    
+}
 
 void handle_summer_time() {
     #ifdef USE_NTP
@@ -1132,17 +1131,31 @@ void handle_alt_panel ()   {
 }
 
 void handle_index ()   {
-    bool flg = false;
+  bool flg1 = false;
+  bool flg2 = false;
+  bool flg3 = false;
+  bool flg4 = false;
+  bool flg5 = false;
     if (HTTP.arg("index").toInt())
     {
-        flg = FileCopy (F("/index/in_final.gz") , F("/index.json.gz"));
-        LittleFS.remove("/effect2.ini");
+    flg1 = FileCopy (F("/main_sound/index1.json.gz"), F("/index.json.gz"));
+    flg2 = FileCopy (F("/main_sound/index1.htm.gz"), F("/index.htm.gz"));
+    flg3 = FileCopy (F("/main_sound/setup_alarm1.json.gz"), F("/setup_alarm.json.gz"));
+    flg4 = FileCopy (F("/main_sound/setup_hardware1.json.gz"), F("/setup_hardware.json.gz"));
+    flg5 = FileCopy (F("/main_sound/setup_multilamp1.json.gz"), F("/setup_multilamp.json.gz"));
+    } else {
+    if (HTTP.arg("index0").toInt())
+    flg1 = FileCopy (F("/main_sound/index0.json.gz"), F("/index.json.gz"));
+    flg2 = FileCopy (F("/main_sound/index0.htm.gz"), F("/index.htm.gz"));
+    flg3 = FileCopy (F("/main_sound/setup_alarm0.json.gz"), F("/setup_alarm.json.gz"));
+    flg4 = FileCopy (F("/main_sound/setup_hardware0.json.gz"), F("/setup_hardware.json.gz"));
+    flg5 = FileCopy (F("/main_sound/setup_multilamp0.json.gz"), F("/setup_multilamp.json.gz"));
     }
-    if (flg) HTTP.send(200, F("text/plain"), F("OK"));
+    if (flg1 && flg2 && flg3 && flg4 && flg5) { 
+    HTTP.send(200, F("text/plain"), F("OK"));
+    }
     else HTTP.send(404, F("text/plain"), "File not found");
 }
-
-
 
 void get_time_manual ()   {
     phoneTimeLastSync = HTTP.arg("get_time").toInt() + jsonReadtoInt(configSetup, "timezone") * 3600; // phoneTimeLastSync = tmp + jsonReadtoInt(configSetup, "timezone") * 3600;

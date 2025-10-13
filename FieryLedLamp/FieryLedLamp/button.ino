@@ -72,8 +72,9 @@ void buttonTick()
     {
       ONflag = !ONflag;
       jsonWrite(configSetup, "Power", ONflag);
-    }
-    if (!ONflag)  {
+      changePower(); // Сначала выключаем матрицу
+
+      if (!ONflag)  {
         timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
         if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
         save_file_changes = 7;
@@ -83,8 +84,8 @@ void buttonTick()
         EepromManager::EepromGet(modes);
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 0);
+      }
     }
-    changePower();
     loadingFlag = true;
 
     #if (USE_MQTT)
@@ -98,7 +99,7 @@ void buttonTick()
     #endif
     #ifdef USE_MULTIPLE_LAMPS_CONTROL
     if (ONflag) {
-        repeat_multiple_lamp_control=true;
+        repeat_multiple_lamp_control = true;
     }
     else {
         multiple_lamp_control ();
