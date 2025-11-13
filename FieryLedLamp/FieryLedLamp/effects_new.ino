@@ -3119,7 +3119,7 @@ void drawCircle(Circle circle) {
   for (int16_t x = startX; x < endX; x++) {
     for (int16_t y = startY; y < endY; y++) {
       int16_t index = XY(x, y);
-      if (index < 0 || index > NUM_LEDS)
+      if (index < 0 || index >= NUM_LEDS)
         continue;
       double distance = sqrt(sq(x - centerX) + sq(y - centerY));
       if (distance > radius)
@@ -3731,90 +3731,382 @@ void Fountain() {
 //             © SlingMaster
 //            Радужные кольца
 // =====================================
-float codeEff(double t, double i, double x, double y) {
-  hue = 255U; hue2 = 0U; // | CENTER_X_MAJOR
-  return sin16((t - sqrt3((x - CENTER_X_MAJOR) * (x - CENTER_X_MAJOR) + (y - CENTER_Y_MAJOR) * (y - CENTER_Y_MAJOR))) * 8192.0) / 32767.0;
+
+float codeEff(double t, double x, double y, float radius, uint8_t hueOffset, float fadeFactor = 1.0) {
+  float distance = sqrt((x - CENTER_X_MAJOR) * (x - CENTER_X_MAJOR) + (y - CENTER_Y_MAJOR) * (y - CENTER_Y_MAJOR));
+  float wave = sin16((t * 2.0 - distance + radius) * 8192.0) / 32767.0;
+  wave = (wave + 1.0) / 2.0;
+  wave *= 0.7;
+  return wave * fadeFactor;
 }
-// --------------------------------------
-void drawFrame(double t, double x, double y) {
-  static uint32_t t_count;
-  static byte scaleXY = 8;
-  double i = (y * WIDTH) + x;
-  double frame = constrain(codeEff(t, i, x, y), -1, 1) * 255;
-  uint16_t tt = floor(i);
-  byte xx;
-  byte yy;
-  byte angle;
-  byte radius;
-  if (frame > 0) {
-    // white or black color
-    if (modes[currentMode].Scale > 70) {
-      if (modes[currentMode].Scale > 90) {
-        drawPixelXY(x, y, CRGB(frame / 4, frame / 2, frame / 2));
-      } else {
-        drawPixelXY(x, y, CRGB(frame / 2, frame / 2, frame / 4));
-      }
-    } else {
-      drawPixelXY(x, y, CRGB::Black);
-    }
-  } else {
-    if (frame < 0) {
-      switch (deltaHue2) {
-        case 0:
-          hue = step + y * x;
-          break;
-        case 1:
-          hue = 64 + (y + x) * abs(128 - step) / CENTER_Y_MAJOR;
-          break;
-        case 2:
-          hue = y * x + abs(y - CENTER_Y_MAJOR) * 4;
-          break;
-        case 3:
-          xx = (byte)x;
-          yy = (byte)y;
-          angle = noise3d[0][xx][yy];
-          radius = noise3d[1][xx][yy];
-          if ((xx == 0) & (yy == 0))  t_count += 8;
-          hue = (angle * scaleXY) + (radius * scaleXY) + t_count;
-          break;
-        default:
-          hue = step + y * x;
-          break;
-      }
-      drawPixelXY(x, y, CHSV( hue, frame * -1, frame * -1));
+
+void drawFrame(double t, double x, double y, float radius, uint8_t hueOffset, float fadeFactor = 1.0) {
+  float distance = sqrt((x - CENTER_X_MAJOR) * (x - CENTER_X_MAJOR) + (y - CENTER_Y_MAJOR) * (y - CENTER_Y_MAJOR));
+  if (abs(distance - radius) < 2.0) {
+    float frame = codeEff(t, x, y, radius, hueOffset, fadeFactor);
+    if (frame > 0.01) {
+      uint8_t brightness = (uint8_t)(frame * 255);
+      CRGB color = ColorFromPalette(*curPalette, hueOffset, brightness);
+      drawPixelXY(x, y, color);
     } else {
       drawPixelXY(x, y, CRGB::Black);
     }
   }
 }
-// -------------------------------------
+
 void RainbowRings() {
+  static uint32_t lastUpdateTime = 0;
+  static float ringRadii[10];
+  static uint8_t ringHues[10];
+  static float ringFades[10];
+  static uint8_t activeRings = 0;
+  static uint8_t prevScale = 0;
+  static uint32_t colorChangeTime = 0;
+  static uint8_t baseHue = 0;
+  static const uint8_t maxActiveRings = 5;
+
   if (loadingFlag) {
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
     if (selectedSettings) {
-      //                     scale | speed
-      setModeSettings(random8(100U), random8(255U));
+      setModeSettings(10U + random8(90U), 100U + random8(100U));
     }
-#endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+#endif
     loadingFlag = false;
-    deltaHue = 0;
-    FPSdelay = 1;
-    deltaHue2 = modes[currentMode].Scale / 22;
-    hue = 255U; hue2 = 0U;
-    for (int8_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR; x++) {
-      for (int8_t y = CENTER_X_MAJOR; y < HEIGHT; y++) {
-        noise3d[0][x + CENTER_X_MAJOR][y] = 128 * (atan2(y, x) / PI);
-        noise3d[1][x + CENTER_X_MAJOR][y] = hypot(x, y);                    // thanks Sutaburosu
+    prevScale = 0;
+    setCurrentPalette();
+    dimAll(0);
+    lastUpdateTime = millis();
+    colorChangeTime = millis();
+    baseHue = 0;
+    activeRings = maxActiveRings;
+    float spacing = max(CENTER_X_MAJOR, CENTER_Y_MAJOR) * 2.0 / maxActiveRings;
+    for (uint8_t i = 0; i < maxActiveRings; i++) {
+      ringRadii[i] = i * spacing;
+      ringHues[i] = baseHue + (i * (256 / maxActiveRings));
+      ringFades[i] = 1.0;
+    }
+  }
+
+  if (prevScale != modes[currentMode].Scale) {
+    prevScale = modes[currentMode].Scale;
+    baseHue = map(modes[currentMode].Scale, 1U, 100U, 0U, 255U);
+
+    for (uint8_t i = 0; i < activeRings; i++) {
+      ringHues[i] = baseHue + (i * (256 / maxActiveRings));
+    }
+  }
+
+  float speedFactor = (float)modes[currentMode].Speed / 255.0;
+
+  uint32_t colorInterval = 300 - (uint32_t)(speedFactor * 200);
+  if (millis() - colorChangeTime > colorInterval) {
+    baseHue += 2 + (uint8_t)(speedFactor * 5);
+
+    for (uint8_t i = 0; i < activeRings; i++) {
+      ringHues[i] = baseHue + (i * (256 / maxActiveRings));
+    }
+    colorChangeTime = millis();
+  }
+
+  uint8_t dimValue = map(modes[currentMode].Scale, 1, 100, 240, 255);
+  dimAll(dimValue);
+
+  float ringSpeed = 0.6 + speedFactor * 2.4;
+
+  uint32_t currentTime = millis();
+  float deltaTime = (currentTime - lastUpdateTime) / 1000.0;
+
+  for (uint8_t i = 0; i < activeRings; i++) {
+    ringRadii[i] += ringSpeed * deltaTime;
+    if (ringRadii[i] >= max(CENTER_X_MAJOR, CENTER_Y_MAJOR) * 2.0) {
+      ringRadii[i] = 0.0;
+      ringHues[i] = baseHue + (i * (256 / maxActiveRings));
+      ringFades[i] = 1.0;
+    }
+  }
+
+  for (uint8_t i = 0; i < activeRings; i++) {
+    for (double x = 0; x < WIDTH; x++) {
+      for (double y = 0; y < HEIGHT; y++) {
+        drawFrame(millis() / 1000.0, x, y, ringRadii[i], ringHues[i], ringFades[i]);
       }
     }
   }
-  // *****
-  unsigned long milli = millis();
-  double t = milli / 1000.0;
-  for ( double x = 0; x < WIDTH; x++) {
-    for (double y = 0; y < HEIGHT; y++) {
-      drawFrame(t, x, y);
+
+  lastUpdateTime = currentTime;
+}
+
+// ==================== БАБОЧКА ===================
+void butterflyRoutine() {
+  static uint32_t colorChangeTime = 0;
+  static uint8_t baseHue = 0;
+  static uint8_t prevScale = 0;
+
+  if (loadingFlag) {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) {
+      setModeSettings(10U + random8(90U), 100U + random8(100U));
+    }
+#endif
+    loadingFlag = false;
+    enlargedObjectNUM = map(modes[currentMode].Scale, 1U, 100U, 1U, min(static_cast<uint8_t>(enlargedOBJECT_MAX_COUNT), static_cast<uint8_t>(5)));
+    setCurrentPalette();
+    baseHue = map(modes[currentMode].Scale, 1U, 100U, 0U, 255U);
+    prevScale = modes[currentMode].Scale;
+    for (uint8_t i = 0; i < enlargedObjectNUM; i++) {
+      trackingObjectPosX[i] = random8(WIDTH);
+      trackingObjectPosY[i] = random8(HEIGHT);
+      trackingObjectSpeedX[i] = (float)random8(10, 20) / 10.0 * (random8(2) ? 1 : -1);
+      trackingObjectSpeedY[i] = (float)random8(10, 20) / 10.0 * (random8(2) ? 1 : -1);
+      trackingObjectHue[i] = baseHue + (i * (256 / enlargedObjectNUM));
+      trackingObjectState[i] = 0;
+      trackingObjectIsShift[i] = true;
+      enlargedObjectTime[i] = millis();
+    }
+    dimAll(0);
+  }
+
+  if (prevScale != modes[currentMode].Scale) {
+    prevScale = modes[currentMode].Scale;
+    baseHue = map(modes[currentMode].Scale, 1U, 100U, 0U, 255U);
+    for (uint8_t i = 0; i < enlargedObjectNUM; i++) {
+      trackingObjectHue[i] = baseHue + (i * (256 / enlargedObjectNUM));
     }
   }
-  step++;
+
+  float speedFactor = (float)modes[currentMode].Speed / 255.0;
+
+  uint32_t colorInterval = 300 - (uint32_t)(speedFactor * 200);
+  if (millis() - colorChangeTime > colorInterval) {
+    baseHue += 2 + (uint8_t)(speedFactor * 5);
+    for (uint8_t i = 0; i < enlargedObjectNUM; i++) {
+      trackingObjectHue[i] = baseHue + (i * (256 / enlargedObjectNUM));
+    }
+    colorChangeTime = millis();
+  }
+
+  dimAll(230);
+
+  for (uint8_t i = 0; i < enlargedObjectNUM; i++) {
+    if (!trackingObjectIsShift[i]) continue;
+
+    trackingObjectPosX[i] += trackingObjectSpeedX[i] * speedFactor;
+    trackingObjectPosY[i] += trackingObjectSpeedY[i] * speedFactor;
+
+    if (trackingObjectPosX[i] < 0 || trackingObjectPosX[i] >= WIDTH) {
+      trackingObjectSpeedX[i] = -trackingObjectSpeedX[i];
+      trackingObjectPosX[i] = constrain(trackingObjectPosX[i], 0, WIDTH - 1);
+    }
+    if (trackingObjectPosY[i] < 0 || trackingObjectPosY[i] >= HEIGHT) {
+      trackingObjectSpeedY[i] = -trackingObjectSpeedY[i];
+      trackingObjectPosY[i] = constrain(trackingObjectPosY[i], 0, HEIGHT - 1);
+    }
+
+    uint8_t wingPhase = (millis() - enlargedObjectTime[i]) / 100;
+    float wingSize = 1.0 + 0.5 * sin((float)wingPhase * PI / 8.0);
+
+    CRGB color = ColorFromPalette(*curPalette, trackingObjectHue[i]);
+
+    drawPixelXYF(trackingObjectPosX[i], trackingObjectPosY[i], color);
+    drawPixelXYF(trackingObjectPosX[i] + wingSize, trackingObjectPosY[i] + wingSize, makeDarker(color, 50));
+    drawPixelXYF(trackingObjectPosX[i] - wingSize, trackingObjectPosY[i] + wingSize, makeDarker(color, 50));
+    drawPixelXYF(trackingObjectPosX[i] + wingSize, trackingObjectPosY[i] - wingSize, makeDarker(color, 50));
+    drawPixelXYF(trackingObjectPosX[i] - wingSize, trackingObjectPosY[i] - wingSize, makeDarker(color, 50));
+  }
+}
+
+// ================== НОВЫЕ ЗВЁЗДЫ ===================
+#define MAX_STARS 30
+#define TWO_PI 6.28318530718
+
+void StarsEffect() {
+  static uint32_t lastUpdateTime = 0;
+  static struct Star {
+    float x, y;
+    uint8_t hue;
+    float brightness;
+    float speed;
+    float size;
+    bool active;
+    float lifetime;
+  } stars[MAX_STARS];
+  static uint8_t activeStars = 0;
+  static uint8_t prevScale = 0;
+  static uint8_t baseHue = 0;
+
+  if (loadingFlag) {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) {
+      setModeSettings(10U + random8(90U), 100U + random8(100U));
+    }
+#endif
+    loadingFlag = false;
+    prevScale = 0;
+    setCurrentPalette();
+    dimAll(0);
+    lastUpdateTime = millis();
+    baseHue = map(modes[currentMode].Scale, 1U, 100U, 0U, 255U);
+    activeStars = 0;
+    for (uint8_t i = 0; i < MAX_STARS; i++) {
+      stars[i].active = false;
+    }
+  }
+
+  float speedFactor = (float)modes[currentMode].Speed / 255.0;
+
+  if (prevScale != modes[currentMode].Scale) {
+    prevScale = modes[currentMode].Scale;
+    baseHue = map(modes[currentMode].Scale, 1U, 100U, 0U, 255U);
+    for (uint8_t i = 0; i < MAX_STARS; i++) {
+      if (stars[i].active) {
+        stars[i].hue = baseHue + random8(32);
+      }
+    }
+  }
+
+  uint8_t dimValue = map(modes[currentMode].Scale, 1, 100, 225, 240);
+  dimAll(dimValue);
+
+  uint8_t desiredStars = map(modes[currentMode].Scale, 1, 100, 3, MAX_STARS);
+
+  uint32_t currentTime = millis();
+  float deltaTime = (currentTime - lastUpdateTime) / 1000.0;
+
+  for (uint8_t i = 0; i < MAX_STARS; i++) {
+    if (stars[i].active) {
+      stars[i].brightness += stars[i].speed * deltaTime * (0.8 + speedFactor * 2.5);
+      if (stars[i].brightness > TWO_PI) {
+        stars[i].brightness -= TWO_PI;
+      }
+      float bright = (sin(stars[i].brightness) * 0.5 + 0.5) * (sin(stars[i].brightness * 1.5) * 0.5 + 0.5);
+      bright = constrain(bright, 0.0, 1.0);
+      uint8_t pixelBright = (uint8_t)(bright * 200);
+
+      stars[i].lifetime -= deltaTime;
+
+      if (pixelBright > 5 && stars[i].lifetime > 0) {
+        CRGB color = CHSV(stars[i].hue, 200, pixelBright);
+        if (stars[i].size <= 1.0) {
+          drawPixelXY((uint8_t)stars[i].x, (uint8_t)stars[i].y, color);
+        } else {
+          uint8_t x = (uint8_t)stars[i].x;
+          uint8_t y = (uint8_t)stars[i].y;
+          drawPixelXY(x, y, color);
+          if (x + 1 < WIDTH) drawPixelXY(x + 1, y, color);
+          if (y + 1 < HEIGHT) drawPixelXY(x, y + 1, color);
+          if (x + 1 < WIDTH && y + 1 < HEIGHT) drawPixelXY(x + 1, y + 1, color);
+        }
+      } else {
+        if (stars[i].size <= 1.0) {
+          drawPixelXY((uint8_t)stars[i].x, (uint8_t)stars[i].y, CRGB::Black);
+        } else {
+          uint8_t x = (uint8_t)stars[i].x;
+          uint8_t y = (uint8_t)stars[i].y;
+          drawPixelXY(x, y, CRGB::Black);
+          if (x + 1 < WIDTH) drawPixelXY(x + 1, y, CRGB::Black);
+          if (y + 1 < HEIGHT) drawPixelXY(x, y + 1, CRGB::Black);
+          if (x + 1 < WIDTH && y + 1 < HEIGHT) drawPixelXY(x + 1, y + 1, CRGB::Black);
+        }
+        stars[i].active = false;
+        activeStars--;
+      }
+    }
+  }
+
+  if (activeStars < desiredStars) {
+    uint8_t spawnChance = 10 + (uint8_t)(speedFactor * 15);
+    if (random8(100) < spawnChance) {
+      for (uint8_t i = 0; i < MAX_STARS; i++) {
+        if (!stars[i].active) {
+          stars[i].x = random8(WIDTH);
+          stars[i].y = random8(HEIGHT);
+          stars[i].hue = baseHue + random8(32);
+          stars[i].brightness = random8() / 255.0 * TWO_PI;
+          stars[i].speed = random(600, 1800) / 1000.0;
+          stars[i].size = random8(100) < 20 ? 2.0 : 1.0;
+          stars[i].lifetime = random(2000, 5000) / 1000.0;
+          stars[i].active = true;
+          activeStars++;
+          break;
+        }
+      }
+    }
+  }
+
+  lastUpdateTime = currentTime;
+}
+
+// ================= ФЛАГ (ТРИКОЛОР) ===================
+void FlagRoutine() {
+  static uint32_t lastUpdateTime = 0;
+  static float offset = 0.0;
+  static float xOffset = 0.0;
+  static uint8_t prevScale = 0;
+
+  if (loadingFlag) {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) {
+      setModeSettings(10U + random8(90U), 100U + random8(100U));
+    }
+#endif
+    loadingFlag = false;
+    prevScale = modes[currentMode].Scale;
+    offset = 0.0;
+    xOffset = 0.0;
+    dimAll(0);
+  }
+
+  dimAll(240);
+
+  float speedFactor = (float)modes[currentMode].Speed / 255.0;
+  float scrollSpeed = 2.0 + speedFactor * 8.0;
+  float xScrollSpeed = scrollSpeed * ((float)modes[currentMode].Scale / 100.0);
+  float waveSpeed = 0.5 + speedFactor * 1.0;
+  float waveAmplitude = map(modes[currentMode].Scale, 1U, 100U, 1.0, 4.0);
+
+  uint8_t flagRepeats = map(modes[currentMode].Scale, 1U, 100U, 1U, 4U);
+  if (prevScale != modes[currentMode].Scale) {
+    prevScale = modes[currentMode].Scale;
+    dimAll(0);
+  }
+
+  float flagHeight = (float)HEIGHT / flagRepeats;
+  float stripeHeight = flagHeight / 3.0;
+
+  uint32_t currentTime = millis();
+  float deltaTime = (currentTime - lastUpdateTime) / 1000.0;
+  offset += scrollSpeed * deltaTime; // Прокрутка вниз (а чтобы сделать прокрутку вверх: offset -= scrollSpeed * deltaTime;)
+  xOffset += xScrollSpeed * deltaTime;
+  if (offset >= flagHeight) {
+    offset -= flagHeight;
+  }
+  if (xOffset >= (float)WIDTH) {
+    xOffset -= (float)WIDTH;
+  }
+
+  for (uint8_t x = 0; x < WIDTH; x++) {
+    for (uint8_t y = 0; y < HEIGHT; y++) {
+      float waveOffset = waveAmplitude * sin(((float)x + xOffset) / WIDTH * TWO_PI + currentTime / 1000.0 * waveSpeed);
+      float adjustedY = (float)y + offset + waveOffset;
+      if (adjustedY >= flagHeight) {
+        adjustedY -= flagHeight;
+      }
+      if (adjustedY < 0) {
+        adjustedY += flagHeight;
+      }
+
+      float stripePos = (flagHeight - adjustedY) / stripeHeight;
+      uint8_t stripeIndex = (uint8_t)stripePos;
+      CRGB color;
+      switch (stripeIndex % 3) {
+        case 0: color = CRGB(255, 255, 255); break; // Белый
+        case 1: color = CRGB(0, 0, 255); break;     // Синий
+        case 2: color = CRGB(255, 0, 0); break;     // Красный
+      }
+
+      drawPixelXY(x, y, color);
+    }
+  }
+
+  lastUpdateTime = currentTime;
 }

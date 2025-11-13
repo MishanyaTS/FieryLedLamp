@@ -45,8 +45,6 @@ class EepromManager
       }
       if (EEPROM.read(EEPROM_FIRST_RUN_ADDRESS + 2) != EEPROM_FIRST_RUN_MARK)
       {
-        if(FileCopy (F("/default/index.json.gz"), F("/index.json.gz"))) 
-        {
             #ifdef ESP32_USED
              esp_task_wdt_reset();
             #else
@@ -54,10 +52,6 @@ class EepromManager
             #endif          
         }     
       }
-      else {
-          T_flag = 1;
-      }
-    }
 
     static void EepromGet(ModeType modes[]) {
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)

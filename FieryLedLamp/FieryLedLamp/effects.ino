@@ -1639,6 +1639,7 @@ void colorsRoutine2()
 }
 
 // ------------- цвет ------------------
+
 void colorRoutine()
 {
   if (loadingFlag)
@@ -1661,6 +1662,77 @@ void colorRoutine()
         fillAll(CHSV(modes[currentMode].Scale * 2.55, modes[currentMode].Speed, 255U));
   //}
 }
+
+// ------------- цвет с затуханием ------------------
+
+static uint8_t brightness = 255; 
+static unsigned long lastUpdate = 0; 
+static bool isEffectActive = true; 
+
+void colorFaded() {
+  if (loadingFlag) {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) {
+      setModeSettings(1U + random8(100U), 96U + random8(160));
+    }
+#endif
+    loadingFlag = false;
+    brightness = 255; 
+    lastUpdate = millis();
+    isEffectActive = true; 
+  }
+
+  if (!isEffectActive) {
+    if (modes[currentMode].Scale < 3 && RuninTextOverEffects) {
+      FastLED.clear();
+    }
+    return;
+  }
+
+  // При уровне ползунка Скорость 1 затухание занимает ~1 минуту (Скорость шага 235 мс)
+  // При уровне ползунка Скорость 255 затухание занимает ~255 минут (Скорость шага 59925 мс)
+  
+  uint16_t speedValue = modes[currentMode].Speed == 0 ? 1 : modes[currentMode].Speed;
+  uint32_t fadeDelay = map(speedValue, 255, 1, 59925, 235); // Максимальное время затухания 255 минут
+  
+  if (millis() - lastUpdate >= fadeDelay) {
+    if (brightness > 0) {
+      brightness--; // Уменьшаем яркость
+      lastUpdate = millis(); // Обновляем время
+    } else {
+      isEffectActive = false; // Выключаем лампу при яркости 0
+      {
+      ONflag = !ONflag;
+      jsonWrite(configSetup, "Power", ONflag);
+      changePower(); // Сначала выключаем матрицу
+
+      if (!ONflag)  {
+        timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
+        if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
+        save_file_changes = 7;
+        Save_File_Changes();
+    }
+    else {
+        EepromManager::EepromGet(modes);
+        timeout_save_file_changes = millis();
+        bitSet (save_file_changes, 0);
+      }
+    }
+    loadingFlag = true;
+    }
+  }
+
+  // Ползунок Масштаб/Цвет определяет цвет эффекта
+  uint8_t hue = modes[currentMode].Scale * 2.55;
+
+  // Отрисовка
+  if (modes[currentMode].Scale < 3 && RuninTextOverEffects) {
+    FastLED.clear();
+  } else {
+    fillAll(CHSV(hue, 255, brightness));
+  }
+}
+
 
 // =====================================
 //               Snowfall
