@@ -26,13 +26,14 @@ static CHSV dawnColorMinus4 = CHSV(0, 0, 0);
 static CHSV dawnColorMinus5 = CHSV(0, 0, 0);
 static CHSV dawnColor = CHSV(0, 0, 0);*/
 static CRGB dawnColor[6];
+static CRGB sunsetColor[6];
 
 static uint8_t dawnCounter = 0;                                           // счётчик первых 10 шагов будильника
+static uint8_t sunsetCounter = 0;                                           // счётчик первых 10 шагов заката
 
 void timeTick()
 {
 Save_File_Changes();
-  //{
   
   #ifdef USE_RTC
   if (hasRtc && !timeSynched) {
@@ -215,9 +216,85 @@ if (stillUseNTP)
         digitalWrite(MOSFET_PIN, ONflag ? MOSFET_LEVEL : !MOSFET_LEVEL);
         #endif
       }
-    jsonWrite(configSetup, "time", Get_Time(currentLocalTime));
+        
+    #ifdef MP3_PLAYER_USE
+       if (mp3_player_connect == 4 && sunsetFlag == 1 && sunsetPosition <= 10) {
+        first_entry = 1;
+        advert_hour = true;
+        delay(mp3_delay);
+        play_time_ADVERT();
+        while (advert_flag) {
+           play_time_ADVERT();
+           #ifdef ESP32_USED
+            esp_task_wdt_reset();
+           #else
+            ESP.wdtFeed();
+           #endif
+        }
+      }
+    #endif  // MP3_PLAYER_USE
+      
+      // Проверка заката
+       if (sunsets[thisDay].State &&                                                                                          // день заката
+          thisTime >= sunsets[thisDay].Time &&                                                                                // позже начала
+          thisTime < (sunsets[thisDay].Time + pgm_read_byte(&sunsetOffsets[sunsetMode])))                                     // раньше конца + минута
+      {
+        if (!manualsOff)                                                   // закат не был выключен вручную (из приложения или кнопкой)
+        {
+          // Величина заката 255-0 (обратный порядок для уменьшения яркости)
+          sunsetPosition = (uint16_t) (255 * (1.0 - ((float)(thisFullTime - sunsets[thisDay].Time * 60) / (pgm_read_byte(&sunsetOffsets[sunsetMode]) * 60))));
+          sunsetPosition = sunsetPosition < 255U ? sunsetPosition : 255U;
+          for (uint8_t j = 5U; j > 0U; j--)
+            if (sunsetCounter >= j)
+              sunsetColor[j] = sunsetColor[j - 1U];
+          sunsetColor[0] = CHSV(map(sunsetPosition, 0, 255, 10, 35),
+                           map(sunsetPosition, 0, 255, 255, 170),
+                           map(sunsetPosition, 0, 255, 2, SUNSET_BRIGHT));
+
+          if (sunsetCounter < 5U) sunsetCounter++;
+          
+          for (uint16_t i = 0U; i < NUM_LEDS; i++)
+          leds[i] = sunsetColor[i % 6U];
+          FastLED.setBrightness(255);
+          delay(1);
+          FastLED.show();
+          sunsetFlag = 1;
+#ifdef TM1637_USE
+          //blink_clock = true;
+#endif
+        }
+#ifdef TM1637_USE
+        //else blink_clock = false;
+#endif
+
+      }
+      else
+      {
+        // не время заката (ещё не начался или закончился по времени)
+        if (sunsetFlag == 1)
+        {
+          sunsetFlag = 2;
+          #ifdef TM1637_USE
+          clockTicker_blink();
+          #endif
+          ONflag = !ONflag;
+          jsonWrite(configSetup, "Power", ONflag);
+          changePower(); // Сначала выключаем матрицу
     }
-  //}
+        
+#ifdef TM1637_USE
+        //blink_clock = false;
+#endif
+        manualsOff = false;
+        for (uint8_t j = 0U; j < 6U; j++)
+          sunsetColor[j] = 0;
+          
+        sunsetCounter = 0;
+
+      }
+    jsonWrite(configSetup, "time", Get_Time(currentLocalTime));
+    
+    }
 }
 
 #ifdef USE_NTP
@@ -369,6 +446,24 @@ void clockTicker_blink()
       if (aDirection) DispBrightness+=51U; else DispBrightness-=51U;
     }
   }
+
+  else if (sunsetFlag == 1)  //если рассвет - мигаем  часами
+  {
+    display.displayClock(hours, last_minute);                         // выводим время функцией часов
+    if (millis() - tmr_blink > 100) {
+      tmr_blink = millis();
+      display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
+      if (DispBrightness >= 204) {
+        aDirection = false;
+      }
+      if (DispBrightness < 51U ) {
+        if (!DispBrightness)  DispBrightness=1;
+        aDirection = true;
+      }
+      if (aDirection) DispBrightness+=51U; else DispBrightness-=51U;
+    }
+  }
+  
   else {
         tm1637_brightness ();
         display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
@@ -418,10 +513,12 @@ void Save_File_Changes() {
             break;
         case 2:
             save_alarms();
+            save_sunsets();
             save_file_changes = 0;
             break;
         case 3:
             save_alarms();
+            save_sunsets();
             writeFile(F("config.json"), configSetup );
             save_file_changes = 0;
             break;
@@ -437,10 +534,12 @@ void Save_File_Changes() {
         case 6:
             cycle_get();
             save_alarms();
+            save_sunsets();
             save_file_changes = 0;
             break;
         case 7:
             save_alarms();
+            save_sunsets();
             cycle_get();
             writeFile(F("config.json"), configSetup );
             save_file_changes = 0;

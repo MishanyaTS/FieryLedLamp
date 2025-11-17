@@ -1063,6 +1063,22 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             #endif
             showWarning(CRGB::Red, 500, 250U);
         }
+        if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+             #endif
+            showWarning(CRGB::Green, 500, 250U);
+        }
+        else {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+            #endif
+            showWarning(CRGB::Red, 500, 250U);
+        }
         if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             #ifdef ESP32_USED
              esp_task_wdt_reset();
@@ -1385,6 +1401,59 @@ void sendAlarms(char *outputBuffer)
 	}
   DAWN_TIMEOUT = jsonReadtoInt(configAlarm, "after");
   DAWN_BRIGHT = jsonReadtoInt(configAlarm, "a_br");
+}
+
+void sendSunsets(char *outputBuffer)
+{
+      char k[2];
+    bool sunset_change = false;
+      String configSunset = readFile(F("config_sunset.json"), 512); 
+  #ifdef GENERAL_DEBUG
+    LOG.println ("\nТекущие установки заката");
+      LOG.println(configSunset);
+  #endif
+  strcpy_P(outputBuffer, PSTR("SUNS"));
+
+  for (byte i = 0; i < 7; i++)
+  {
+  itoa ((i+1), k, 10);
+    k[1] = 0;
+    String a = "a" + String (k) ;
+    String h = "h" + String (k) ;
+    String m = "m" + String (k) ;
+  if (sunsets[i].State != (jsonReadtoInt(configSunset, a)) || sunsets[i].Time != (jsonReadtoInt(configSunset, h)) * 60U + (jsonReadtoInt(configSunset, m)))
+  {
+    sunset_change = true;
+    jsonWrite(configSunset, a, sunsets[i].State);
+    jsonWrite(configSunset, h, (sunsets[i].Time / 60U));
+    jsonWrite(configSunset, m, (sunsets[i].Time % 60U));
+  }
+    sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)sunsets[i].State); 
+  }
+
+  for (byte i = 0; i < 7; i++)
+  {
+    sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, sunsets[i].Time);
+  }
+  
+  if (sunsetMode != (jsonReadtoInt(configSunset, "t")-1))
+  {
+    sunset_change = true;
+    jsonWrite(configSunset, "t", (sunsetMode + 1));
+  }
+  sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, sunsetMode + 1);
+  if (sunset_change)
+  {
+    //writeFile("config_sunset.json", configSunset );
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 1);
+
+  #ifdef GENERAL_DEBUG
+    LOG.println ("\nНовые установки заката сохранены в файл");
+      LOG.println(configSunset);
+  #endif
+  }
+  SUNSET_BRIGHT = jsonReadtoInt(configSunset, "s_br");
 }
 
 void sendTimer(char *outputBuffer)

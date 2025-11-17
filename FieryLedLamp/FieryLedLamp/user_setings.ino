@@ -29,6 +29,7 @@ void User_setings ()  {
  HTTP.on("/time_always", handle_time_always);     // Выводить или нет время бегущей строкой(если задано) на не активной лампе
  HTTP.on("/timeZone", handle_time_zone);    // Установка смещения времени относительно GMT.
  HTTP.on("/alarm", handle_alarm);   // Установка будильника "рассвет"
+ HTTP.on("/sunset", handle_sunset);   // Установка заката
  HTTP.on("/cycle_on", handle_cycle_on);   // Вкл/выкл режима Цикл
  HTTP.on("/time_eff", handle_time_eff);   // Время переключения цикла + Dispersion добавочное случайное время от 0 до disp
  HTTP.on("/rnd_cycle", handle_rnd_cycle);   // Перемешать выбранные или по порядку
@@ -52,8 +53,11 @@ void User_setings ()  {
  HTTP.on("/on_sound", handle_on_sound);  // Включить/Выключить звук эффектов
  HTTP.on("/vol", handle_volume);  // Громкость озвучивания эффектов
  HTTP.on("/on_alm_snd", handle_alarm_on_sound);  // Включить/Выключить звук будильника
+ HTTP.on("/on_sun_snd", handle_sunset_on_sound);  // Включить/Выключить звук заката
  HTTP.on("/alm_vol", handle_alarm_volume);  // Громкость озвучивания будильника
+ HTTP.on("/sun_vol", handle_sunset_volume);  // Громкость озвучивания заката
  HTTP.on("/alm_fold_sel", handle_alarm_fold_sel);  // Выбор папки для будильника
+ HTTP.on("/sun_fold_sel", handle_sunset_fold_sel);  // Выбор папки для заката
  HTTP.on("/on_day_adv", handle_day_advert_on_sound);  // Включить/Выключить озвучивание времени днём
  HTTP.on("/on_night_adv", handle_night_advert_on_sound);  // Включить/Выключить озвучивание времени ночью
  HTTP.on("/on_alm_adv", handle_alarm_advert_sound_on);  // Включить/Выключить озвучивание времени будильником
@@ -198,7 +202,7 @@ void handle_night_time ()  {
     NIGHT_HOURS_STOP = 60U * jsonReadtoInt(configSetup, "day_time");
     DAY_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "day_bright");
     getBrightnessForPrintTime();
-    if(ONflag && !dawnFlag)
+    if(ONflag && !dawnFlag && !sunsetFlag)
         SetBrightness(modes[currentMode].Brightness);
     #ifdef TM1637_USE
     clockTicker_blink();
@@ -504,6 +508,15 @@ void handle_Power ()  {
       SetBrightness(modes[currentMode].Brightness);
       changePower();
     }
+    else if (sunsetFlag == 1){
+      manualsOff = true;
+      sunsetFlag = 2;
+      #ifdef TM1637_USE
+      clockTicker_blink();
+      #endif
+      SetBrightness(modes[currentMode].Brightness);
+      changePower();
+    }
     else {    
     tmp = HTTP.arg("Power").toInt();
     if (tmp == 2) jsonReadtoInt(configSetup, "Power") == 0? tmp = 1 : tmp = 0;
@@ -617,6 +630,49 @@ void handle_alarm ()  {
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
+void handle_sunset ()  { 
+    char i[2];
+    String configSunset = readFile(F("config_sunset.json"), 512); 
+    #ifdef GENERAL_DEBUG
+    LOG.println (F("\nУстановки заката"));
+    LOG.println(configSunset);
+    #endif
+    // подготовка  строк с именами полей json file
+    for (uint8_t k=0; k<7; k++) {
+        itoa ((k+1), i, 10);
+        //i[1] = 0;
+        String a = "a" + String (i) ;
+        String h = "h" + String (i) ;
+        String m = "m" + String (i) ;
+        //сохранение параметров в строку
+        if (!first_entry){  
+        jsonWrite(configSunset, a, HTTP.arg(a).toInt());
+        jsonWrite(configSunset, h, HTTP.arg(h).toInt());
+        jsonWrite(configSunset, m, HTTP.arg(m).toInt());
+        }
+    //сохранение установок будильника
+    sunsets[k].State = (jsonReadtoInt(configSunset, a));
+    sunsets[k].Time = (jsonReadtoInt(configSunset, h)) * 60 + (jsonReadtoInt(configSunset, m));
+    #ifdef ESP32_USED
+        esp_task_wdt_reset();
+        #else
+        ESP.wdtFeed();
+        #endif
+        yield();
+    }
+    if (!first_entry) {
+       jsonWrite(configSunset, "t", HTTP.arg("t").toInt());
+       jsonWrite(configSunset, "s_br", HTTP.arg("s_br").toInt());
+    } 
+    sunsetMode = jsonReadtoInt(configSunset, "t")-1;
+    SUNSET_BRIGHT = jsonReadtoInt(configSunset, "s_br");
+    if (!first_entry)
+        {
+         writeFile(F("config_sunset.json"), configSunset );
+        }
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
 void save_alarms()   {
     char k[2];
     bool alarm_change = false;
@@ -656,6 +712,48 @@ void save_alarms()   {
         #ifdef GENERAL_DEBUG
         LOG.println (F("\nНовые установки будильника сохранены в файл"));
         LOG.println(configAlarm);
+        #endif
+    }
+}
+
+void save_sunsets()   {
+    char k[2];
+    bool sunset_change = false;
+    String configSunset = readFile(F("config_sunset.json"), 512); 
+    #ifdef GENERAL_DEBUG
+     LOG.println (F("\nТекущие установки заката"));
+     LOG.println(configSunset);
+    #endif
+    #ifdef ESP32_USED
+     esp_task_wdt_reset();
+    #else
+     ESP.wdtFeed();
+    #endif
+    for (byte i = 0; i < 7; i++) {
+        itoa ((i+1), k, 10);
+        k[1] = 0;
+        String a = "a" + String (k) ;
+        String h = "h" + String (k) ;
+        String m = "m" + String (k) ;
+        if (sunsets[i].State != (jsonReadtoInt(configSunset, a)) || sunsets[i].Time != (jsonReadtoInt(configSunset, h)) * 60U + (jsonReadtoInt(configSunset, m)))
+          {
+            sunset_change = true;
+            jsonWrite(configSunset, a, sunsets[i].State);
+            jsonWrite(configSunset, h, (sunsets[i].Time / 60U));
+            jsonWrite(configSunset, m, (sunsets[i].Time % 60U));
+          }
+        yield();
+    }
+    if (sunsetMode != (jsonReadtoInt(configSunset, "t")-1)) {
+        sunset_change = true;
+        jsonWrite(configSunset, "t", (sunsetMode + 1));
+    }
+    jsonWrite(configSunset, "s_br", SUNSET_BRIGHT);  
+    if (sunset_change) {
+        writeFile(F("config_sunset.json"), configSunset );
+        #ifdef GENERAL_DEBUG
+        LOG.println (F("\nНовые установки заката сохранены в файл"));
+        LOG.println(configSunset);
         #endif
     }
 }
@@ -1136,22 +1234,25 @@ void handle_index ()   {
   bool flg3 = false;
   bool flg4 = false;
   bool flg5 = false;
+  bool flg6 = false;
     if (HTTP.arg("index").toInt())
     {
     flg1 = FileCopy (F("/main_sound/index1.json.gz"), F("/index.json.gz"));
     flg2 = FileCopy (F("/main_sound/index1.htm.gz"), F("/index.htm.gz"));
     flg3 = FileCopy (F("/main_sound/setup_alarm1.json.gz"), F("/setup_alarm.json.gz"));
-    flg4 = FileCopy (F("/main_sound/setup_hardware1.json.gz"), F("/setup_hardware.json.gz"));
-    flg5 = FileCopy (F("/main_sound/setup_multilamp1.json.gz"), F("/setup_multilamp.json.gz"));
+    flg4 = FileCopy (F("/main_sound/setup_sunset1.json.gz"), F("/setup_sunset.json.gz"));
+    flg5 = FileCopy (F("/main_sound/setup_hardware1.json.gz"), F("/setup_hardware.json.gz"));
+    flg6 = FileCopy (F("/main_sound/setup_multilamp1.json.gz"), F("/setup_multilamp.json.gz"));
     } else {
     if (HTTP.arg("index0").toInt())
     flg1 = FileCopy (F("/main_sound/index0.json.gz"), F("/index.json.gz"));
     flg2 = FileCopy (F("/main_sound/index0.htm.gz"), F("/index.htm.gz"));
     flg3 = FileCopy (F("/main_sound/setup_alarm0.json.gz"), F("/setup_alarm.json.gz"));
-    flg4 = FileCopy (F("/main_sound/setup_hardware0.json.gz"), F("/setup_hardware.json.gz"));
-    flg5 = FileCopy (F("/main_sound/setup_multilamp0.json.gz"), F("/setup_multilamp.json.gz"));
+    flg4 = FileCopy (F("/main_sound/setup_sunset0.json.gz"), F("/setup_sunset.json.gz"));
+    flg5 = FileCopy (F("/main_sound/setup_hardware0.json.gz"), F("/setup_hardware.json.gz"));
+    flg6 = FileCopy (F("/main_sound/setup_multilamp0.json.gz"), F("/setup_multilamp.json.gz"));
     }
-    if (flg1 && flg2 && flg3 && flg4 && flg5) { 
+    if (flg1 && flg2 && flg3 && flg4 && flg5 && flg6) { 
     HTTP.send(200, F("text/plain"), F("OK"));
     }
     else HTTP.send(404, F("text/plain"), "File not found");
@@ -1231,10 +1332,27 @@ void handle_alarm_on_sound ()   {
     HTTP.send(200, F("text/plain"), F("OK")); 
 }
 
+void handle_sunset_on_sound ()   {
+    sunset_sound_on = HTTP.arg("on_sun_snd").toInt();
+    jsonWrite(configSetup, "on_sun_snd", sunset_sound_on);
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK")); 
+}
+
 void handle_alarm_volume ()   {
     alarm_volume = HTTP.arg("alm_vol").toInt();
     jsonWrite(configSetup, "alm_vol", alarm_volume);
     if (dawnflag_sound && alarm_sound_on) send_command(6,FEEDBACK,0,alarm_volume); //Громкость
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_sunset_volume ()   {
+    sunset_volume = HTTP.arg("sun_vol").toInt();
+    jsonWrite(configSetup, "sun_vol", sunset_volume);
+    if (sunsetflag_sound && sunset_sound_on) send_command(6,FEEDBACK,0,sunset_volume); //Громкость
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1407,6 +1525,20 @@ void handle_alarm_fold_sel ()   {
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
+void handle_sunset_fold_sel ()   {
+    SunsetFolder = HTTP.arg("sun_fold").toInt();
+    jsonWrite(configSetup, "sun_fold", SunsetFolder);
+    bitSet (save_file_changes, 0);
+    timeout_save_file_changes = millis();
+    if (sunset_sound_flag) {
+        mp3_folder = SunsetFolder;  // Папка заката
+        //mp3_folder_change= 1;
+        mp3_folder_last = mp3_folder;
+        play_sound();
+    }
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
 void handle_test ()   {
     uint8_t tmp;
     String configHardware = readFile(F("config_hardware.json"), 2048);
@@ -1559,6 +1691,22 @@ void handle_reset_to_default ()   {
         #endif
         showWarning(CRGB::Red, 500, 250U);
     }
+    if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+             #endif
+            showWarning(CRGB::Green, 500, 250U);
+        }
+        else {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+            #endif
+            showWarning(CRGB::Red, 500, 250U);
+        }
     if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
         #ifdef ESP32_USED
          esp_task_wdt_reset();
@@ -1722,7 +1870,7 @@ void handle_set_static_ip ()   {
 void handle_auto_bri ()   {
     AutoBrightness = HTTP.arg("auto_bri").toInt();
     jsonWrite(configSetup, "auto_bri", AutoBrightness);
-    if (ONflag && !dawnFlag) {
+    if (ONflag && !dawnFlag && !sunsetFlag) {
         SetBrightness(modes[currentMode].Brightness);  // Переключаем автояркость эффектов
     }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1836,7 +1984,7 @@ void EffectList (const String& efflist )   {
 }
  
 void SetBrightness(uint8_t brightness)   {
-    if (AutoBrightness && !dawnFlag && !day_night) {
+    if (AutoBrightness && !dawnFlag && !sunsetFlag && !day_night) {
         FastLED.setBrightness(constrain(brightness >> AutoBrightness, 1, 100));
     }
     else

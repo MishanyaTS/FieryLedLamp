@@ -68,6 +68,26 @@ void buttonTick()
        }
        return;
     }
+    else if (sunsetFlag == 1) {
+        #ifdef MP3_PLAYER_USE
+        if (sunset_sound_flag) {
+           send_command(0x0E,0,0,0); //Пауза
+           mp3_stop = true;
+           sunset_sound_flag = false;
+        }
+        else
+        #endif  // MP3_PLAYER_USE
+        {
+            manualsOff = true;
+            sunsetFlag = 2;
+            #ifdef TM1637_USE
+            clockTicker_blink();
+            #endif
+            SetBrightness(modes[currentMode].Brightness);
+            changePower();
+       }
+       return;
+    }
     else
     {
       ONflag = !ONflag;
@@ -118,6 +138,19 @@ void buttonTick()
         alarm_sound_flag = false;
         manualOff = true;
         dawnFlag = 2;
+        #ifdef TM1637_USE
+        clockTicker_blink();
+        #endif
+        SetBrightness(modes[currentMode].Brightness);
+        changePower();
+       }
+       else if (sunsetFlag == 1) {
+        //myDFPlayer.pause();
+        send_command(0x0E,0,0,0);  //Пауза
+        mp3_stop = true;
+        sunset_sound_flag = false;
+        manualsOff = true;
+        sunsetFlag = 2;
         #ifdef TM1637_USE
         clockTicker_blink();
         #endif
@@ -585,6 +618,22 @@ if (touch.isStep()){
             #endif
               showWarning(CRGB::Red, 500, 250U);
           }
+          if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+             #endif
+            showWarning(CRGB::Green, 500, 250U);
+        }
+        else {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+            #endif
+            showWarning(CRGB::Red, 500, 250U);
+        }
           if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             #ifdef ESP32_USED
              esp_task_wdt_reset();
@@ -828,6 +877,22 @@ if (touch.isStep()){
             #endif
               showWarning(CRGB::Red, 500, 250U);
           }
+          if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+             #endif
+            showWarning(CRGB::Green, 500, 250U);
+        }
+        else {
+            #ifdef ESP32_USED
+             esp_task_wdt_reset();
+            #else
+             ESP.wdtFeed();
+            #endif
+            showWarning(CRGB::Red, 500, 250U);
+        }
           if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             #ifdef ESP32_USED
              esp_task_wdt_reset();

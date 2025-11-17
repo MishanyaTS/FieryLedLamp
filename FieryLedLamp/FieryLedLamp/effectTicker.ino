@@ -15,6 +15,7 @@ uint32_t effTimer;
 void effectsTick()
 {
   if (!dawnFlag)
+  if (!sunsetFlag)
   {
     // ------------------------------------- у эффектов до EFF_MATRIX (все перед Матрицей) бегунок Скорость не регулирует задержку между кадрами
     if (ONflag )
@@ -192,8 +193,8 @@ void changePower()
     for (uint8_t i = 0U; i < k; i = constrain(i + (k < 60 ? 1 : 4), 0, k))
     {
       FastLED.setBrightness(i);
-      delay(1);
       FastLED.show();
+      delay(1);
     }
     SetBrightness(modes[currentMode].Brightness);
     delay(2);
@@ -215,6 +216,69 @@ void changePower()
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором
     digitalWrite(MOSFET_PIN, !MOSFET_LEVEL);
     #endif
+    if (ONflag) 
+    {
+        changePower();
+        return;
+    }
+  }
+// Сброс таймера автоотключения
+  TimerManager::TimerRunning = false;
+  TimerManager::TimerHasFired = false;
+  TimerManager::TimeToFire = 0ULL;
+  jsonWrite(configSetup, "tmr", 0);
+    if (ONflag && AUTOMATIC_OFF_TIME) {
+      TimerManager::TimerRunning = true;
+      TimerManager::TimeToFire = millis() + AUTOMATIC_OFF_TIME;
+    }  
+  if (!ONflag && FavoritesManager::UseSavedFavoritesRunning == 0U) // если выбрана опция Сохранять состояние (вкл/выкл) "избранного",
+  {                                                                // то ни выключение модуля, ни выключение матрицы не сбрасывают текущее состояние (вкл/выкл) "избранного"
+      FavoritesManager::TurnFavoritesOff();
+      jsonWrite(configSetup, "cycle_on", 0);
+  }
+
+  #if (USE_MQTT)
+  if (espMode == 1U)
+  {
+    MqttManager::needToPublish = true;
+  }
+  #endif
+else
+  uint8_t k;
+  if (sunsetFlag == 2) {
+      k = SUNSET_BRIGHT;
+  }
+  else  if (AutoBrightness && !day_night)      
+          k = constrain(modes[currentMode].Brightness >> AutoBrightness, 1, 100); // Автоматическая яркость
+       else
+         k = modes[currentMode].Brightness;
+
+  if (ONflag && !sunsetFlag)
+  {
+    effectsTick();
+    for (uint8_t i = 0U; i < k; i = constrain(i + (k < 60 ? 1 : 4), 0, k))
+    {
+      FastLED.setBrightness(i);
+      FastLED.show();
+      delay(1);
+    }
+    SetBrightness(modes[currentMode].Brightness);
+    delay(2);
+    FastLED.show();
+  }
+  else
+  {
+    if(sunsetFlag != 2) effectsTick();
+    else sunsetFlag = 0;
+    for (uint8_t i = k; i > 0; i = constrain(i - (k < 60 ? 1 : 4), 0, k))
+    {
+      FastLED.setBrightness(i);
+      delay(1);
+      FastLED.show();
+    }
+    FastLED.clear();
+    delay(2);
+    FastLED.show();
     if (ONflag) 
     {
         changePower();

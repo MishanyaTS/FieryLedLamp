@@ -25,7 +25,9 @@
 
 // Переменные, которые были использованиы в модуле для анализа
 // dawnFlag - Идет рассвет
+// sunsetFlag - Идет закат
 // dawnPosition - Яркость рассвета
+// sunsetPosition - Яркость заката
 // ONflag - включена/выключена лампа
 */
 
@@ -261,6 +263,14 @@ void play_sound()   {
           //mp3_folder_change = 0;
           CurrentFolder_last = CurrentFolder;
         }
+        else if (((CurrentFolder_last != CurrentFolder) && set_mp3_play_now) || sunset_sound_flag){
+          send_command(0x17,FEEDBACK,0,CurrentFolder); // Включить непрерывное воспроизведение указанной папки
+          delay(mp3_delay);
+          //Serial.println ("play_sound");
+          mp3_stop = false;
+          //mp3_folder_change = 0;
+          CurrentFolder_last = CurrentFolder;
+        }
           //CurrentFolder_last = CurrentFolder;
     }
     jsonWrite(configSetup, "fold_sel", CurrentFolder);
@@ -306,6 +316,40 @@ void mp3_loop()   {
         mp3_stop = true;
         delay(mp3_delay);
         //CurrentFolder = CurrentFolder_last;
+      }
+  }
+
+  if (sunsetFlag == 1) {                          // если наступает закат
+      if (sunsetflag_sound ) {
+          if (sunset_sound_flag && (millis() - sunset_timer > 1000)) {
+              sunset_timer = millis();
+              send_command (0x06,FEEDBACK,0, min(((uint8_t)(sunsetPosition/8)), sunset_volume)); //Уменьшение громкости в зависимости от стадии заката от sunset_volume до 0
+          }
+          return;
+     }
+      send_command(0x0E,FEEDBACK,0,0);  //Пауза
+      mp3_stop = true;
+      sunsetflag_sound = 1;
+     if (sunset_sound_on) {
+        delay(mp3_delay);
+        mp3_folder = SunsetFolder;
+        sunset_timer = millis();
+        send_command(0x06,FEEDBACK,0,0);  //Громкость
+        sunset_sound_flag = true;
+        mp3_folder_last = mp3_folder;
+        play_sound();
+     }
+    return;
+  }
+  else {
+      if (sunsetflag_sound) {
+        send_command(0x06,FEEDBACK,0,eff_volume);  //Громкость
+        delay(mp3_delay);
+        sunset_sound_flag = false;
+        sunsetflag_sound = 0;
+        send_command(0x0E,FEEDBACK,0,0);  //Пауза
+        mp3_stop = true;
+        delay(mp3_delay);
       }
   }
   if (ONflag && eff_sound_on) {

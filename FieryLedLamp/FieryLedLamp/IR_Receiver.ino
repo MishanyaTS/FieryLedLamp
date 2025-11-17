@@ -393,6 +393,27 @@ void IR_Power()   {
        }
        return;
     }
+        else if (sunsetFlag == 1) {
+        #ifdef MP3_PLAYER_USE
+        if (sunset_sound_flag) {
+           //myDFPlayer.pause();
+           send_command(0x0E,0,0,0); //Пауза
+           mp3_stop = true;
+           sunset_sound_flag = false;
+        }
+        else
+        #endif  // MP3_PLAYER_USE
+        {
+            manualsOff = true;
+            sunsetFlag = 2;
+            #ifdef TM1637_USE
+            clockTicker_blink();
+            #endif
+            SetBrightness(modes[currentMode].Brightness);
+            changePower();
+       }
+       return;
+    }
     else
     {
         ONflag = !ONflag;

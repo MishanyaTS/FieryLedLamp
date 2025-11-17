@@ -89,6 +89,7 @@ class FavoritesManager
       //#ifdef USE_NTP
       #if defined(USE_NTP) || defined(USE_MANUAL_TIME_SETTING) || defined(GET_TIME_FROM_PHONE)
       , uint8_t* dawnFlag
+      , uint8_t* sunsetFlag
       #endif
       , uint8_t* random_on
       , uint8_t* selectedSettings
@@ -100,6 +101,7 @@ class FavoritesManager
           //#ifdef USE_NTP
           #if defined(USE_NTP) || defined(USE_MANUAL_TIME_SETTING) || defined(GET_TIME_FROM_PHONE)
           || *dawnFlag == 1                                      // лампа не переключается на следующий эффект при включенном будильнике
+          || *sunsetFlag == 1
           #endif
           || (*currentMode == EFF_WHITE_COLOR && FavoriteModes[EFF_WHITE_COLOR] == 0U) // лампа не переключается на следующий эффект, если выбран режим Белый свет, и он не в списке режима Цикл
       )

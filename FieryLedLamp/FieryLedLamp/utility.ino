@@ -223,5 +223,3 @@ uint8_t SpeedFactor(uint8_t spd) {
 #endif
   return result;
 }
-
-
