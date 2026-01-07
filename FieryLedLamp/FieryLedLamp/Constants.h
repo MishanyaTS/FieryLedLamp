@@ -1,10 +1,10 @@
-// Текущая версия : FieryLedLamp v5.3 132 эффекта
+// Текущая версия : FieryLedLamp v5.4 132 эффекта
 // ВНИМАНИЕ!!! Большая часть настроек перенесена в файл data/config и может изменяться в процессе эксплуатации лампы.
 // Внимательно читайте файл ПРОЧТИ МЕНЯ!!!.txt и ПРОЧТИ МЕНЯ.doc (тут с картинками)
 
 #pragma once
 
-#define FLL_VERSION           (" Ver.5.3.132")
+#define FLL_VERSION           (" Ver.5.4.132")
 
 
 // ==========  ВНЕШНЕЕ УПРАВЛЕНИЕ  ===============
@@ -511,8 +511,9 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
 
 // --- РАССВЕТ -------------------------
 uint8_t DAWN_BRIGHT ;                                       // максимальная яркость рассвета (0-255)
-uint8_t SUNSET_BRIGHT ;                                     // максимальная яркость заката (0-255)
 uint8_t DAWN_TIMEOUT;                                       // сколько рассвет светит после времени будильника, минут. Может быть изменено в установках будильника
+// --- ЗАКАТ -------------------------
+uint8_t SUNSET_BRIGHT ;                                     // максимальная яркость заката (0-255)
 
 
 //#define MAX_UDP_BUFFER_SIZE (UDP_TX_PACKET_MAX_SIZE + 1)
@@ -597,46 +598,8 @@ unsigned int NIGHT_HOURS_STOP;                              // Завершен�
 unsigned int DAY_HOURS_BRIGHTNESS;                          // Начало дневного времени
 unsigned int NIGHT_HOURS_BRIGHTNESS;                        // Завершение дневного времени
 
-// Раскоментируйте эти четыре функции и закоментируйте следующие четыре функции, если вы используете библиотеку ArduinoJSON Version 5 (по умолчанию используется Version 6)
-/*
-// ------------- Чтение значения json String
-String jsonRead(String &json, String name) {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(json);
-  return root[name].as<String>();
-}
+// Функции JSON (ArduinoJSON Version 6.19.4)
 
-// ------------- Чтение значения json int
-int jsonReadtoInt(String &json, String name) {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(json);
-  return root[name];
-}
-
-// ------------- Запись значения json String
-String jsonWrite(String &json, String name, String volume) {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(json);
-  root[name] = volume;
-  json = "";
-  root.printTo(json);
-  return json;
-}
-
-// ------------- Запись значения json int
-String jsonWrite(String &json, String name, int volume) {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(json);
-  root[name] = volume;
-  json = "";
-  root.printTo(json);
-  return json;
-}
-*/
-
-// Раскоментируйте эти четыре функции и закоментируйте предыдущие четыре функции, если вы используете библиотеку ArduinoJSON Version 6
-
-// StaticJsonDocument<2048> doc;  // DynamicJsonDocument doc(2048);
 // ------------- Чтение значения json String
 String jsonRead(String &json, String name) {
   DynamicJsonDocument doc(3072);
@@ -750,7 +713,6 @@ void Display_Timer (uint8_t argument = 0);
 void timeTick();
 void Save_File_Changes();
 bool FileCopy (const String& SourceFile , const String& TargetFile); // Копирование файлов
-uint8_t T_flag = 0;                   // Служебное
 void showWarning(CRGB color, uint32_t duration, uint16_t blinkHalfPeriod);
 
 #ifdef ESP32_USED

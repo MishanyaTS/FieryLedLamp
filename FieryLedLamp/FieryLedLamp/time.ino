@@ -430,24 +430,7 @@ void clockTicker_blink()
   if (timeSynched && !DisplayFlag) {  
   
   //tm1637_brightness ();
-  if (dawnFlag == 1)  //если рассвет - мигаем  часами
-  {
-    display.displayClock(hours, last_minute);                         // выводим время функцией часов
-    if (millis() - tmr_blink > 100) {
-      tmr_blink = millis();
-      display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
-      if (DispBrightness >= 204) {
-        aDirection = false;
-      }
-      if (DispBrightness < 51U ) {
-        if (!DispBrightness)  DispBrightness=1;
-        aDirection = true;
-      }
-      if (aDirection) DispBrightness+=51U; else DispBrightness-=51U;
-    }
-  }
-
-  else if (sunsetFlag == 1)  //если рассвет - мигаем  часами
+  if (dawnFlag == 1 || sunsetFlag == 1)  //если рассвет или закат - мигаем  часами
   {
     display.displayClock(hours, last_minute);                         // выводим время функцией часов
     if (millis() - tmr_blink > 100) {

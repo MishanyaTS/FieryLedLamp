@@ -7,6 +7,12 @@ struct AlarmType
   uint16_t Time = 0U;
 };
 
+struct SunsetType
+{
+  bool State = false;
+  uint16_t Time = 0U;
+};
+
 struct ModeType
 {
   uint8_t Brightness = 50U;
@@ -16,9 +22,3 @@ struct ModeType
 
 typedef void (*SendCurrentDelegate)(char *outputBuffer);
 typedef void (*ShowWarningDelegate)(CRGB color, uint32_t duration, uint16_t blinkHalfPeriod);
-
-struct SunsetType
-{
-  bool State = false;
-  uint16_t Time = 0U;
-};

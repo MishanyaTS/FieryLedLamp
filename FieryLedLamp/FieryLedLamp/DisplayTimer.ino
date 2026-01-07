@@ -26,7 +26,7 @@ void Display_Timer (uint8_t argument)   {
         if (timeSynched) clockTicker_blink ();                   // отображаем  время
         else display.displayByte(_dash, _dash, _dash, _dash);    // отображаем прочерки
     }
-/*        
+    /*       
     #ifdef MP3_PLAYER_USE
     if (DisplayFlag ==0 && LastCurrentFolder != CurrentFolder) {
         LastCurrentFolder = CurrentFolder;
@@ -42,7 +42,7 @@ void Display_Timer (uint8_t argument)   {
         else display.displayByte(_dash, _dash, _dash, _dash);    // отображаем прочерки
     }
     #endif  // MP3_PLAYER_USE
-*/    
+    */ 
     if(DisplayFlag == 3) {
         DisplayTimer = millis();
         DisplayFlag = 4;

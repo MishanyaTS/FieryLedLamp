@@ -337,6 +337,16 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         changePower();
         sendCurrent(inputBuffer);
       }
+      else if (sunsetFlag == 1) {
+        manualsOff = true;
+        sunsetFlag = 2;
+        #ifdef TM1637_USE
+        clockTicker_blink();
+        #endif
+        SetBrightness(modes[currentMode].Brightness);
+        changePower();
+        sendCurrent(inputBuffer);
+      }
       else {
         ONflag = true;
 		jsonWrite(configSetup, "Power", ONflag);
@@ -361,6 +371,16 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       if (dawnFlag == 1) {
         manualOff = true;
         dawnFlag = 2;
+        #ifdef TM1637_USE
+        clockTicker_blink();
+        #endif
+        SetBrightness(modes[currentMode].Brightness);
+        changePower();
+        sendCurrent(inputBuffer);
+      }
+      else if (sunsetFlag == 1) {
+        manualsOff = true;
+        sunsetFlag = 2;
         #ifdef TM1637_USE
         clockTicker_blink();
         #endif
@@ -431,6 +451,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
             delay(mp3_delay);
           }
+          if (!sunsetFlag && ONflag && eff_sound_on) {
+            send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
+            delay(mp3_delay);
+          }
           }
           if (valid == 8 || valid == 6) {
             tmp = strtok (NULL, ",");
@@ -439,6 +463,13 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             if (atoi (tmp) != CurrentFolder) {
               CurrentFolder = atoi (tmp);
               if (!dawnFlag && ONflag && eff_sound_on) {
+                send_command(0x17,FEEDBACK,0,CurrentFolder); // Включить непрерывное воспроизведение указанной папки
+                //mp3_folder_change = 0;
+                CurrentFolder_last = CurrentFolder;
+                mp3_stop = false;
+                delay(mp3_delay);
+              }
+              if (!sunsetFlag && ONflag && eff_sound_on) {
                 send_command(0x17,FEEDBACK,0,CurrentFolder); // Включить непрерывное воспроизведение указанной папки
                 //mp3_folder_change = 0;
                 CurrentFolder_last = CurrentFolder;
@@ -483,12 +514,24 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
             delay(mp3_delay);
           }
+          if (!sunsetFlag && ONflag && eff_sound_on) {
+            send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
+            delay(mp3_delay);
+          }
           }
           if (valid == 8 || valid == 6) {
             tmp = strtok (NULL, ",");
             if (atoi (tmp) != CurrentFolder) {
               CurrentFolder = atoi (tmp);
               if (eff_sound_on && !dawnFlag && ONflag) {
+                send_command(0x17,FEEDBACK,0,CurrentFolder); // Включить непрерывное воспроизведение указанной папки
+                mp3_stop = false;
+                //mp3_folder_change = 0;
+                CurrentFolder_last = CurrentFolder;
+                delay(mp3_delay);
+                //send_sound_flag = 1;
+              }
+              if (eff_sound_on && !sunsetFlag && ONflag) {
                 send_command(0x17,FEEDBACK,0,CurrentFolder); // Включить непрерывное воспроизведение указанной папки
                 mp3_stop = false;
                 //mp3_folder_change = 0;
@@ -822,12 +865,62 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         sendAlarms(inputBuffer);
     }
 
+    else if (!strncmp_P(inputBuffer, PSTR("SUN_"), 4)) { // сокращаем GET и SET для ускорения регулярного цикла
+      if (!strncmp_P(inputBuffer, PSTR("SUN_SET"), 7))
+      {
+        uint8_t sunsetNum = (char)inputBuffer[7] - '0';
+        sunsetNum -= 1;
+        if (strstr_P(inputBuffer, PSTR("ON")) - inputBuffer == 9)
+        {
+          sunsets[sunsetNum].State = true;
+          sendSunsets(inputBuffer);
+        }
+        else if (strstr_P(inputBuffer, PSTR("OFF")) - inputBuffer == 9)
+        {
+          sunsets[sunsetNum].State = false;
+          sendSunsets(inputBuffer);
+        }
+        else
+        {
+          memcpy(buff, &inputBuffer[8], strlen(inputBuffer)); // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 9
+          sunsets[sunsetNum].Time = atoi(buff);
+          sendSunsets(inputBuffer);
+        }
+        //EepromManager::SaveAlarmsSettings(&alarmNum, alarms);
+
+        #if (USE_MQTT)
+        if (espMode == 1U)
+        {
+          strcpy(MqttManager::mqttBuffer, inputBuffer);
+          MqttManager::needToPublish = true;
+        }
+        #endif
+      }
+      else
+        sendSunsets(inputBuffer);
+    }
+
     else if (!strncmp_P(inputBuffer, PSTR("DAWN"), 4))
     {
       memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
       dawnMode = atoi(buff) - 1;
       //EepromManager::SaveDawnMode(&dawnMode);
       sendAlarms(inputBuffer);
+
+      #if (USE_MQTT)
+      if (espMode == 1U)
+      {
+        MqttManager::needToPublish = true;
+      }
+      #endif
+    }
+    
+    else if (!strncmp_P(inputBuffer, PSTR("SUNS"), 4))
+    {
+      memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
+      sunsetMode = atoi(buff) - 1;
+      //EepromManager::SaveDawnMode(&dawnMode);
+      sendSunsets(inputBuffer);
 
       #if (USE_MQTT)
       if (espMode == 1U)

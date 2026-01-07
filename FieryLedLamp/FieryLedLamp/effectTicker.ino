@@ -179,12 +179,15 @@ void changePower()
       //Serial.println(dawnFlag);
       //dawnFlag = 0;
   }
+  else if (sunsetFlag == 2) {
+      k = SUNSET_BRIGHT;
+  }
   else  if (AutoBrightness && !day_night)      
           k = constrain(modes[currentMode].Brightness >> AutoBrightness, 1, 100); // Автоматическая яркость
        else
          k = modes[currentMode].Brightness;
 
-  if (ONflag && !dawnFlag)
+  if (ONflag && !dawnFlag && !sunsetFlag)
   {
     effectsTick();
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором
@@ -285,7 +288,7 @@ else
         return;
     }
   }
-// Сброс таймера автоотключения
+  // Сброс таймера автоотключения
   TimerManager::TimerRunning = false;
   TimerManager::TimerHasFired = false;
   TimerManager::TimeToFire = 0ULL;
@@ -336,7 +339,7 @@ void noTimeClear() {
 
 void Eff_Tick () {
   #ifdef MP3_PLAYER_USE
-    mp3_folder = effects_folders[currentMode];
+    mp3_folder=effects_folders[currentMode];
   #endif  // MP3_PLAYER_USE
   #ifdef USE_MULTIPLE_LAMPS_CONTROL
     if (repeat_multiple_lamp_control)  {

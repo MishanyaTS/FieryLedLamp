@@ -196,17 +196,17 @@ char packetBuffer[MAX_UDP_BUFFER_SIZE];  // buffer to hold incoming packet
 char inputBuffer[MAX_UDP_BUFFER_SIZE];
 static const uint8_t maxDim = max(WIDTH, HEIGHT);
 
-
 AlarmType alarms[7];
-SunsetType sunsets[7];
 static const uint8_t dawnOffsets[] PROGMEM = {5, 10, 15, 20, 25, 30, 40, 50, 60};   // опции для выпадающего списка параметра "Продолжительность Рассвета" (будильник); синхронизировано с android приложением
-static const uint8_t sunsetOffsets[] PROGMEM = {5, 10, 15, 20, 25, 30, 40, 50, 60};   // опции для выпадающего списка параметра "Продолжительность Заката";
 uint8_t dawnMode;
 uint8_t dawnFlag = 0;
-uint8_t sunsetMode;
-uint8_t sunsetFlag = 0;
 uint32_t thisTime;
 bool manualOff = false;
+
+SunsetType sunsets[7];
+static const uint8_t sunsetOffsets[] PROGMEM = {5, 10, 15, 20, 25, 30, 40, 50, 60};   // опции для выпадающего списка параметра "Продолжительность Заката";
+uint8_t sunsetMode;
+uint8_t sunsetFlag = 0;
 bool manualsOff = false;
 
 int16_t offset = WIDTH;
@@ -269,16 +269,16 @@ uint8_t ml1, ml2, ml3, ml4, ml5;
 #ifdef MP3_PLAYER_USE
 uint8_t mp3_folder=1;                // Текущая папка для воспроизведения.
 uint8_t alarm_sound_on =false;       // Включить/выключить звук будильника
+uint8_t sunset_sound_on =false;      // Включить/выключить звук заката
 uint8_t alarm_volume;                // Громкость будильника
+uint8_t sunset_volume;               // Громкость заката
 uint8_t AlarmFolder;                 // Папка будильника
-uint8_t sunset_sound_on =false;       // Включить/выключить звук заката
-uint8_t sunset_volume;                // Громкость заката
-uint8_t SunsetFolder;                 // Папка заката
+uint8_t SunsetFolder;                // Папка заката
 uint8_t Equalizer;                   // Эквалайзер
 bool alarm_sound_flag =false;        // Проигрывается ли сейчас будильник
+bool sunset_sound_flag =false;       // Проигрывается ли сейчас закат
 uint8_t dawnflag_sound = false;      // Звук не начал обслуживание рассвета. Если не true - звук обслуживает рассвет
-bool sunset_sound_flag =false;        // Проигрывается ли сейчас закат
-uint8_t sunsetflag_sound = false;      // Звук не начал обслуживание заката. Если не true - звук обслуживает закат
+uint8_t sunsetflag_sound = false;    // Звук не начал обслуживание заката. Если не true - звук обслуживает закат
 //uint8_t tmp_fold;
 bool advert_flag = false;            // Озвучивается время
 bool advert_hour;                    // Озвучиваются часы времени
@@ -592,10 +592,10 @@ void setup()  //================================================================
   eff_volume = jsonReadtoInt(configSetup, "vol");
   eff_sound_on = (jsonReadtoInt(configSetup, "on_sound")==0)? 0 : eff_volume;
   alarm_volume = jsonReadtoInt(configSetup, "alm_vol");
-  AlarmFolder = jsonReadtoInt(configSetup, "alm_fold");
-  alarm_sound_on = jsonReadtoInt(configSetup, "on_alm_snd");
   sunset_volume = jsonReadtoInt(configSetup, "sun_vol");
+  AlarmFolder = jsonReadtoInt(configSetup, "alm_fold");
   SunsetFolder = jsonReadtoInt(configSetup, "sun_fold");
+  alarm_sound_on = jsonReadtoInt(configSetup, "on_alm_snd");
   sunset_sound_on = jsonReadtoInt(configSetup, "on_sun_snd");
   day_advert_sound_on = jsonReadtoInt(configSetup,"on_day_adv");
   night_advert_sound_on = jsonReadtoInt(configSetup,"on_night_adv");
@@ -1089,10 +1089,10 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       if (!DisplayFlag) display.setSegmentPoints(points); // выкл/выкл двоеточия 
       Display_Timer ();
     }
-    if (dawnFlag == 1){
+    if (dawnFlag == 1) {
     clockTicker_blink();
     }
-    if (sunsetFlag == 1){
+    if (sunsetFlag == 1) {
     clockTicker_blink();
     }
   #endif  //TM1637_USE

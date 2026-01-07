@@ -1870,7 +1870,10 @@ void handle_set_static_ip ()   {
 void handle_auto_bri ()   {
     AutoBrightness = HTTP.arg("auto_bri").toInt();
     jsonWrite(configSetup, "auto_bri", AutoBrightness);
-    if (ONflag && !dawnFlag && !sunsetFlag) {
+    if (ONflag && !dawnFlag) {
+        SetBrightness(modes[currentMode].Brightness);  // Переключаем автояркость эффектов
+    }
+    else if (ONflag && !sunsetFlag) {
         SetBrightness(modes[currentMode].Brightness);  // Переключаем автояркость эффектов
     }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1984,7 +1987,10 @@ void EffectList (const String& efflist )   {
 }
  
 void SetBrightness(uint8_t brightness)   {
-    if (AutoBrightness && !dawnFlag && !sunsetFlag && !day_night) {
+    if (AutoBrightness && !dawnFlag && !day_night) {
+        FastLED.setBrightness(constrain(brightness >> AutoBrightness, 1, 100));
+    }
+    else if (AutoBrightness && !sunsetFlag && !day_night) {
         FastLED.setBrightness(constrain(brightness >> AutoBrightness, 1, 100));
     }
     else
