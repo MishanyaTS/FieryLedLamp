@@ -3531,7 +3531,7 @@ void text_running() {
     parseUDP();
     delay (1);
     HTTP.handleClient();
-    #ifdef ESP_USE_BUTTON
+    #if USE_BUTTON
      buttonTick();
     #endif
   }*/

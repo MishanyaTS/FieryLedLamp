@@ -35,7 +35,7 @@ void timeTick()
 {
 Save_File_Changes();
   
-  #ifdef USE_RTC
+  #if USE_RTC
   if (hasRtc && !timeSynched) {
     RtcDateTime now = Rtc.GetDateTime();
     if (!wasError("setup IsDateTimeValid")) {
@@ -77,7 +77,7 @@ if (stillUseNTP)
          #if defined(USE_MANUAL_TIME_SETTING) || defined(GET_TIME_FROM_PHONE) // если ручное время тоже поддерживается, сохраняем туда реальное на случай отвалившегося NTP
            manualTimeShift = localTimeZone.toLocal(timeClient.getEpochTime()) - millis() / 1000UL;
          #endif
-          #ifdef USE_RTC
+          #if USE_RTC
           if (hasRtc) {
            timeToSet.InitWithEpoch32Time(timeClient.getEpochTime());
            Rtc.SetDateTime(timeToSet);
@@ -94,7 +94,7 @@ if (stillUseNTP)
       
       if (!timeSynched)                                                   // если время не было синхронизиировано ни разу, отключаем будильник до тех пор, пока оно не будет синхронизировано
       {
-#ifdef TM1637_USE
+#if USE_TM1637
         if (!DisplayFlag) display.displayByte(_dash, _dash, _dash, _dash);                  // отображаем прочерки
 #endif
         return;
@@ -108,18 +108,18 @@ if (stillUseNTP)
       uint32_t thisFullTime = hour(currentLocalTime) * 3600 + minute(currentLocalTime) * 60 + second(currentLocalTime);
       printTime(thisTime, false, ONflag);   // проверка текущего времени и его вывод (если заказан и если текущее время соответстует заказанному расписанию вывода)
       if (last_minute != minute(currentLocalTime)
-          #ifdef TM1637_USE
+          #if USE_TM1637
             && !DisplayFlag
           #endif
           ) {
         hours = hour(currentLocalTime);                   // получаем значение часов
         last_minute = minute(currentLocalTime);           // получаем значение минут
-        #ifdef TM1637_USE
+        #if USE_TM1637
         clockTicker_blink();
         #endif
         if (last_minute == 1) getBrightnessForPrintTime();
         
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
       if (alarm_advert_sound_on && mp3_player_connect == 4 && dawnFlag == 1 && dawnPosition >= 245) {
         //Serial.println ("Alarm");
         first_entry = 1;
@@ -135,7 +135,7 @@ if (stillUseNTP)
            #endif
         }
       }
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
       }
 
       // проверка рассвета
@@ -165,11 +165,11 @@ if (stillUseNTP)
           delay(1);
           FastLED.show();
           dawnFlag = 1;
-#ifdef TM1637_USE
+#if USE_TM1637
           //blink_clock = true;
 #endif
         }
-#ifdef TM1637_USE
+#if USE_TM1637
         //else blink_clock = false;
 #endif
 
@@ -189,23 +189,19 @@ if (stillUseNTP)
         // не время будильника (ещё не начался или закончился по времени)
         if (dawnFlag == 1)
         {
-          dawnFlag = 2;
-          #ifdef TM1637_USE
+          dawnFlag = 0;
+          dawnCounter = 0;
+          manualOff = false;
+          for (uint8_t j = 0U; j < 6U; j++)
+          dawnColor[j] = 0;
+          #if USE_TM1637
           clockTicker_blink();
           #endif
-          //FastLED.clear();
-          //delay(2);
-          //FastLED.show();
           changePower();                                                  // выключение матрицы или установка яркости текущего эффекта в засисимости от того, была ли включена лампа до срабатывания будильника
         }
-#ifdef TM1637_USE
+#if USE_TM1637
         //blink_clock = false;
 #endif
-        manualOff = false;
-        for (uint8_t j = 0U; j < 6U; j++)
-          dawnColor[j] = 0;
-          
-        dawnCounter = 0;
         
 
         #if defined(ALARM_PIN) && defined(ALARM_LEVEL)                    // установка сигнала в пин, управляющий будильником
@@ -217,22 +213,17 @@ if (stillUseNTP)
         #endif
       }
         
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
        if (mp3_player_connect == 4 && sunsetFlag == 1 && sunsetPosition <= 10) {
         first_entry = 1;
-        advert_hour = true;
         delay(mp3_delay);
-        play_time_ADVERT();
-        while (advert_flag) {
-           play_time_ADVERT();
            #ifdef ESP32_USED
             esp_task_wdt_reset();
            #else
             ESP.wdtFeed();
            #endif
-        }
       }
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
       
       // Проверка заката
        if (sunsets[thisDay].State &&                                                                                          // день заката
@@ -242,7 +233,7 @@ if (stillUseNTP)
         if (!manualsOff)                                                   // закат не был выключен вручную (из приложения или кнопкой)
         {
           // Величина заката 255-0 (обратный порядок для уменьшения яркости)
-          sunsetPosition = (uint16_t) (255 * (1.0 - ((float)(thisFullTime - sunsets[thisDay].Time * 60) / (pgm_read_byte(&sunsetOffsets[sunsetMode]) * 60))));
+          sunsetPosition = (uint16_t) (255 * (1.0 - ((float)(thisFullTime - (sunsets[thisDay].Time * 60UL)) / (pgm_read_byte(&sunsetOffsets[sunsetMode]) * 60))));
           sunsetPosition = sunsetPosition < 255U ? sunsetPosition : 255U;
           for (uint8_t j = 5U; j > 0U; j--)
             if (sunsetCounter >= j)
@@ -259,11 +250,11 @@ if (stillUseNTP)
           delay(1);
           FastLED.show();
           sunsetFlag = 1;
-#ifdef TM1637_USE
+#if USE_TM1637
           //blink_clock = true;
 #endif
         }
-#ifdef TM1637_USE
+#if USE_TM1637
         //else blink_clock = false;
 #endif
 
@@ -273,23 +264,21 @@ if (stillUseNTP)
         // не время заката (ещё не начался или закончился по времени)
         if (sunsetFlag == 1)
         {
-          sunsetFlag = 2;
-          #ifdef TM1637_USE
+          sunsetFlag = 0;
+          sunsetCounter = 0;
+          manualsOff = false;
+          for (uint8_t j = 0U; j < 6U; j++)
+          sunsetColor[j] = 0;
+          #if USE_TM1637
           clockTicker_blink();
           #endif
-          ONflag = !ONflag;
-          jsonWrite(configSetup, "Power", ONflag);
-          changePower(); // Сначала выключаем матрицу
+          ONflag = false;
+          changePower();
     }
         
-#ifdef TM1637_USE
+#if USE_TM1637
         //blink_clock = false;
 #endif
-        manualsOff = false;
-        for (uint8_t j = 0U; j < 6U; j++)
-          sunsetColor[j] = 0;
-          
-        sunsetCounter = 0;
 
       }
     jsonWrite(configSetup, "time", Get_Time(currentLocalTime));
@@ -311,7 +300,7 @@ void resolveNtpServerAddress(bool &ntpServerAddressResolved)              // ф�
   #endif
   if (err!=1 || ntpServerIp[0] == 0 || ntpServerIp == IPAddress(255U, 255U, 255U, 255U)) 
   {
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("IP адрес NTP: "));
     LOG.println(ntpServerIp);
     #endif    
@@ -320,7 +309,7 @@ void resolveNtpServerAddress(bool &ntpServerAddressResolved)              // ф�
   }
   else
   {
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("IP адрес NTP: "));
     LOG.println(ntpServerIp);
     #endif
@@ -391,7 +380,7 @@ time_t getCurrentLocalTime()
 }
 
 time_t getCurrentEpochTime() {
-  #ifdef USE_RTC
+  #if USE_RTC
     if (hasRtc) {
     RtcDateTime now = Rtc.GetDateTime();
     return now.Epoch32Time();
@@ -424,7 +413,7 @@ String Get_Time(time_t LocalTime) {
   return String(buffer);
 }
 
-#ifdef TM1637_USE
+#if USE_TM1637
 void clockTicker_blink()
 {
   if (timeSynched && !DisplayFlag) {  
@@ -432,7 +421,6 @@ void clockTicker_blink()
   //tm1637_brightness ();
   if (dawnFlag == 1 || sunsetFlag == 1)  //если рассвет или закат - мигаем  часами
   {
-    display.displayClock(hours, last_minute);                         // выводим время функцией часов
     if (millis() - tmr_blink > 100) {
       tmr_blink = millis();
       display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
@@ -450,7 +438,6 @@ void clockTicker_blink()
   else {
         tm1637_brightness ();
         display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
-        display.displayClock(hours, last_minute);
       } 
   }    
 }

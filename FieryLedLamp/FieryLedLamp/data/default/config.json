@@ -42,8 +42,8 @@
 "night_vol":5,
 "on_alm_snd":0,
 "on_sun_snd":0,
-"alm_vol":15,
-"sun_vol":15,
+"alm_vol":10,
+"sun_vol":10,
 "tmr":0,
 "eq":1,
 "fold_sel":2,
@@ -55,5 +55,12 @@
 "sct":51,
 "spt":200,
 "ctf":0,
-"s_IP":0
+"s_IP":0,
+"clock_time": 10,
+"weather_time": 10,
+"city": "",
+"openweather_key": "",
+"yandex_geo": "",
+"prefer_yandex": 1,
+"show_weather": 1
 }

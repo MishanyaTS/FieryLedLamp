@@ -75,7 +75,7 @@ BLYNK_WRITE(V5)
   }
   settChanged = true;
   eepromTimeout = millis();
-  #if (USE_MQTT)
+  #if USE_MQTT
   MqttManager::needToPublish = true;
   #endif
   
@@ -188,7 +188,7 @@ void processParams(char *prefix, const char *paramValue)
     loadingFlag = true;
     //settChanged = true;
     //eepromTimeout = millis();
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
       MqttManager::needToPublish = true;
@@ -198,7 +198,7 @@ void processParams(char *prefix, const char *paramValue)
     
     updateRemoteBlynkParams();
   }
-  #ifdef OTA
+  #if USE_OTA
   else if ((currentMode == MODE_AMOUNT - 1U) && modes[currentMode].Brightness == 255U && modes[currentMode].Speed == 255U && modes[currentMode].Scale == 100U){
     // добавляем включение прошивки по воздуху
       modes[currentMode].Brightness = 10U;

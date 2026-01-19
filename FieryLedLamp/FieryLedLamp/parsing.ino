@@ -8,7 +8,7 @@ void parseUDP()
     packetBuffer[n] = '\0';
     strcpy(inputBuffer, packetBuffer);
 
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("Inbound UDP packet: "));
     LOG.println(inputBuffer);
     #endif
@@ -22,7 +22,7 @@ void parseUDP()
     reply [0] = '\0';
     processInputBuffer(inputBuffer, reply, true);
 
-    #if (USE_MQTT)                                          // отправка ответа выполнения команд по MQTT, если разрешено
+    #if USE_MQTT                                          // отправка ответа выполнения команд по MQTT, если разрешено
     if (espMode == 1U)
     {
       strcpy(MqttManager::mqttBuffer, reply);               // разрешение определяется при выполнении каждой команды отдельно, команды GET, DEB, DISCOVER и OTA, пришедшие по UDP, игнорируются (приходят раз в 2 секунды от приложения)
@@ -33,7 +33,7 @@ void parseUDP()
     Udp.print(reply);
     Udp.endPacket();
 
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("Outbound UDP packet: "));
     LOG.println(reply);
     LOG.println();
@@ -47,7 +47,7 @@ void updateSets()
       //settChanged = true;
       //eepromTimeout = millis();
 
-      #if (USE_MQTT)
+      #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -131,7 +131,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             if (random_on && FavoritesManager::FavoritesRunning)
                 selectedSettings = 1U;
             sendCurrent(inputBuffer);
-            #if (USE_MQTT)
+            #if USE_MQTT
             if (espMode == 1U)
             {
               MqttManager::needToPublish = true;
@@ -140,7 +140,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             #ifdef USE_BLYNK
             updateRemoteBlynkParams();
             #endif
-            #ifdef USE_MULTIPLE_LAMPS_CONTROL
+            #if USE_MULTIPLE_LAMPS_CONTROL
             repeat_multiple_lamp_control = true;
             #endif  //USE_MULTIPLE_LAMPS_CONTROL
         }
@@ -154,7 +154,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 	  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
 	  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
 	  jsonWrite(configSetup, "sc", modes[currentMode].Scale);
-      #ifdef USE_MULTIPLE_LAMPS_CONTROL
+      #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       sendCurrent(inputBuffer);
@@ -170,7 +170,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     }
     }
 
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     else if (!strncmp_P(inputBuffer, PSTR("VOL"), 3))
     {
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
@@ -199,7 +199,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       */
       sendVolume(inputBuffer);
 
-    #if (USE_MQTT)
+    #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -209,7 +209,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     #ifdef USE_BLYNK_PLUS
         updateRemoteBlynkParams();
     #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
@@ -222,7 +222,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       bitSet (save_file_changes, 0);
       sendVolume(inputBuffer);
 
-  #if (USE_MQTT)
+  #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -231,7 +231,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
   #ifdef USE_BLYNK_PLUS
       updateRemoteBlynkParams();
   #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
@@ -244,7 +244,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       bitSet (save_file_changes, 0);
       sendVolume(inputBuffer);
 
-  #if (USE_MQTT)
+  #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -253,11 +253,11 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
   #ifdef USE_BLYNK_PLUS
       updateRemoteBlynkParams();
   #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }    
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 
     else if (!strncmp_P(inputBuffer, PSTR("LANG"), 4))
     {
@@ -274,7 +274,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Brightness = constrain(atoi(buff), 1, 255);
 	  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-      #ifdef USE_MULTIPLE_LAMPS_CONTROL
+      #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       SetBrightness(modes[currentMode].Brightness);
@@ -283,7 +283,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       //eepromTimeout = millis();
       sendCurrent(inputBuffer);
 
-      #if (USE_MQTT)
+      #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -303,7 +303,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       #ifdef USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
-      #ifdef USE_MULTIPLE_LAMPS_CONTROL
+      #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       updateSets();
@@ -315,7 +315,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Scale = atoi(buff);
 	  jsonWrite(configSetup, "sc", modes[currentMode].Scale);
-      #ifdef USE_MULTIPLE_LAMPS_CONTROL
+      #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       updateSets();
@@ -330,7 +330,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       if (dawnFlag == 1) {
         manualOff = true;
         dawnFlag = 2;
-        #ifdef TM1637_USE
+        #if USE_TM1637
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
@@ -340,7 +340,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       else if (sunsetFlag == 1) {
         manualsOff = true;
         sunsetFlag = 2;
-        #ifdef TM1637_USE
+        #if USE_TM1637
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
@@ -356,7 +356,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         updateSets();
         changePower();
         loadingFlag = true;
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control=true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
         sendCurrent(inputBuffer);
@@ -371,7 +371,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       if (dawnFlag == 1) {
         manualOff = true;
         dawnFlag = 2;
-        #ifdef TM1637_USE
+        #if USE_TM1637
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
@@ -381,7 +381,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       else if (sunsetFlag == 1) {
         manualsOff = true;
         sunsetFlag = 2;
-        #ifdef TM1637_USE
+        #if USE_TM1637
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
@@ -398,12 +398,12 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         Save_File_Changes();
         changePower();
         loadingFlag = true;
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
         multiple_lamp_control ();
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
         sendCurrent(inputBuffer);
 
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           MqttManager::needToPublish = true;
@@ -415,7 +415,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
     }
 
-#ifdef USE_MULTIPLE_LAMPS_CONTROL
+#if USE_MULTIPLE_LAMPS_CONTROL
     else if (!strncmp_P(inputBuffer, PSTR("MULTI"), 5)) { // Управление несколькими лампами
       uint8_t valid = 0, i = 0;
       while (inputBuffer[i])   {   //пакет должен иметь вид MULTI,%U,%U,%U,%U,%U соответственно ON/OFF,№эффекта,яркость,скорость,масштаб или + №текущей папки или + озвучування_on/off, гучнисть
@@ -441,7 +441,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 	      modes[currentMode].Speed = atoi (tmp);
           tmp = strtok (NULL, ",");
 	      modes[currentMode].Scale = atoi (tmp);
-          #ifdef MP3_PLAYER_USE
+          #if USE_MP3_PLAYER
           if (valid == 8) {
           tmp = strtok (NULL, ",");
 	      eff_sound_on = atoi (tmp);
@@ -478,7 +478,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
               }
             }
           }
-          #endif // MP3_PLAYER_USE
+          #endif // USE_MP3_PLAYER
           loadingFlag = true; // Перезапуск эффекта
           SetBrightness(modes[currentMode].Brightness); //Применение яркости
           }
@@ -504,7 +504,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
                 modes[currentMode].Scale = atoi (tmp);
                 loadingFlag = true; // Перезапуск эффекта
             }
-          #ifdef MP3_PLAYER_USE
+          #if USE_MP3_PLAYER
           if (valid == 8) {
           tmp = strtok (NULL, ",");
 	      eff_sound_on = atoi (tmp);
@@ -541,26 +541,26 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
               }
             }
           }
-          #endif // MP3_PLAYER_USE
+          #endif // USE_MP3_PLAYER
         }
         if (onflg) {
-            #ifdef MP3_PLAYER_USE
+            #if USE_MP3_PLAYER
             if (ONflag) mp3_folder=effects_folders[currentMode];
             #endif
             changePower();   // Активация состояния ON/OFF
         }
- #ifdef GENERAL_DEBUG
+ #if GENERAL_DEBUG
      LOG.print ("Принято MULTI ");
      LOG.println (ONflag);
      LOG.println (currentMode);
      LOG.println (modes[currentMode].Brightness);
      LOG.println (modes[currentMode].Speed);
      LOG.println (modes[currentMode].Scale);
-     #ifdef MP3_PLAYER_USE
+     #if USE_MP3_PLAYER
      LOG.println (CurrentFolder);
      LOG.println (eff_sound_on);
      LOG.println (eff_volume);
-     #endif // MP3_PLAYER_USE
+     #endif // USE_MP3_PLAYER
  #endif  //GENERAL_DEBUG
      //changePower();   // Активацмя состояния ON/OFF
      //loadingFlag = true; // Перезапуск эффекта
@@ -569,11 +569,11 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
      jsonWrite(configSetup, "sp", modes[currentMode].Speed);      //для правильного отображения
      jsonWrite(configSetup, "sc", modes[currentMode].Scale);
      jsonWrite(configSetup, "eff_sel", currentMode);
-     #ifdef MP3_PLAYER_USE
+     #if USE_MP3_PLAYER
      jsonWrite(configSetup, "on_sound", eff_sound_on > 0 ? 1 : 0);
      jsonWrite(configSetup, "vol", eff_volume);
      jsonWrite(configSetup, "fold_sel", CurrentFolder);
-     #endif // MP3_PLAYER_USE
+     #endif // USE_MP3_PLAYER
      
      for ( uint8_t n=0; n< MODE_AMOUNT; n++)
      {
@@ -633,7 +633,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 2);
     
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           MqttManager::needToPublish = true;
@@ -645,7 +645,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
     }
 
-    #ifdef OTA
+    #if USE_OTA
     else if (!strncmp_P(inputBuffer, PSTR("OTA"), 3))
     {
       //if (espMode == 1U) пускай обновление работает даже в режиме точки доступа
@@ -671,7 +671,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     }
     #endif // OTA
 
-    #ifdef ESP_USE_BUTTON
+    #if USE_BUTTON
     else if (!strncmp_P(inputBuffer, PSTR("BTN"), 3))
     {
       if (strstr_P(inputBuffer, PSTR("ON")) - inputBuffer == 4)
@@ -689,7 +689,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         sendCurrent(inputBuffer);
       }
 
-      #if (USE_MQTT)
+      #if USE_MQTT
       if (espMode == 1U)
       {
         strcpy(MqttManager::mqttBuffer, inputBuffer);
@@ -697,7 +697,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
       #endif
     }
-    #endif //ESP_USE_BUTTON
+    #endif //USE_BUTTON
     
     else if (!strncmp_P(inputBuffer, PSTR("GBR"), 3)) // выставляем общую яркость для всех эффектов без сохранения в EEPROM, если приложение присылает такую строку
     {
@@ -709,7 +709,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 	  jsonWrite(configSetup, "br", ALLbri);
       FastLED.setBrightness(ALLbri);
       loadingFlag = true;
-      #ifdef USE_MULTIPLE_LAMPS_CONTROL
+      #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
@@ -721,7 +721,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
        {
          setModeSettings();
          updateSets();
-         #ifdef USE_MULTIPLE_LAMPS_CONTROL
+         #if USE_MULTIPLE_LAMPS_CONTROL
          repeat_multiple_lamp_control = true;
          #endif  //USE_MULTIPLE_LAMPS_CONTROL
          sendCurrent(inputBuffer);
@@ -730,7 +730,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
        { // раньше была идея, что будут числа RND_1, RND_2, RND_3 - выбор из предустановленных настроек, но потом всё свелось к единственному варианту случайных настроек
          selectedSettings = 1U;
          updateSets();
-         #ifdef USE_MULTIPLE_LAMPS_CONTROL
+         #if USE_MULTIPLE_LAMPS_CONTROL
          repeat_multiple_lamp_control = true;
          #endif  //USE_MULTIPLE_LAMPS_CONTROL
        }
@@ -739,7 +739,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
          restoreSettings();
          selectedSettings = 0U;
          updateSets();
-         #ifdef USE_MULTIPLE_LAMPS_CONTROL
+         #if USE_MULTIPLE_LAMPS_CONTROL
          repeat_multiple_lamp_control = true;
          #endif  //USE_MULTIPLE_LAMPS_CONTROL
          sendCurrent(inputBuffer);
@@ -853,7 +853,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         //EepromManager::SaveAlarmsSettings(&alarmNum, alarms);
 
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           strcpy(MqttManager::mqttBuffer, inputBuffer);
@@ -888,7 +888,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         //EepromManager::SaveAlarmsSettings(&alarmNum, alarms);
 
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           strcpy(MqttManager::mqttBuffer, inputBuffer);
@@ -900,6 +900,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         sendSunsets(inputBuffer);
     }
 
+
     else if (!strncmp_P(inputBuffer, PSTR("DAWN"), 4))
     {
       memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
@@ -907,14 +908,14 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       //EepromManager::SaveDawnMode(&dawnMode);
       sendAlarms(inputBuffer);
 
-      #if (USE_MQTT)
+      #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
       }
       #endif
     }
-    
+
     else if (!strncmp_P(inputBuffer, PSTR("SUNS"), 4))
     {
       memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
@@ -922,7 +923,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       //EepromManager::SaveDawnMode(&dawnMode);
       sendSunsets(inputBuffer);
 
-      #if (USE_MQTT)
+      #if USE_MQTT
       if (espMode == 1U)
       {
         MqttManager::needToPublish = true;
@@ -973,7 +974,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         TimerManager::TimerHasFired = false;
         sendTimer(inputBuffer);
 
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           MqttManager::needToPublish = true;
@@ -1003,7 +1004,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
            {
              EffectList (F("/efflist3"));
               
-             #ifdef USE_DEFAULT_SETTINGS_RESET
+             #if USE_DEFAULT_SETTINGS_RESET
              // и здесь же после успешной отправки списка эффектов делаем сброс настроек эффектов на значения по умолчанию
              restoreSettings();
              updateSets();
@@ -1317,7 +1318,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
               Udp.print(replyPacket);
               Udp.endPacket();
             }
-            #if (USE_MQTT)
+            #if USE_MQTT
             if (espMode == 1U)
             {
                 MqttManager::needToPublish = true;
@@ -1367,11 +1368,11 @@ void sendCurrent(char *outputBuffer)
   #endif
 
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)TimerManager::TimerRunning);
-  #ifdef ESP_USE_BUTTON
+  #if USE_BUTTON
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)buttonEnabled);
   #else
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, 0);
-  #endif //ESP_USE_BUTTON
+  #endif //USE_BUTTON
 
   //#ifdef USE_NTP
   #if defined(USE_NTP) || defined(USE_MANUAL_TIME_SETTING) || defined(GET_TIME_FROM_PHONE)
@@ -1382,10 +1383,10 @@ void sendCurrent(char *outputBuffer)
   time_t currentTicks = millis() / 1000UL;
   sprintf_P(outputBuffer, PSTR("%s %02u:%02u:%02u"), outputBuffer, hour(currentTicks), minute(currentTicks), second(currentTicks));
   #endif
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_sound_on);
   //sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_volume);
-  #endif  // MP3_PLAYER_USE
+  #endif  // USE_MP3_PLAYER
 }
 
 void NEWsendCurrent(char *outputBuffer)
@@ -1395,7 +1396,7 @@ void NEWsendCurrent(char *outputBuffer)
     {
         if (eff_num_correct[n] == currentMode) break;
     }
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.println ("NEWsendCurrent");
   #endif
   sprintf_P(outputBuffer, PSTR("NEWCURR %u %u %u %u %u %u %u %u %u %u %u %u"),
@@ -1411,7 +1412,7 @@ void NEWsendCurrent(char *outputBuffer)
   0,
   #endif
     TimerManager::TimerRunning,
-    #ifdef ESP_USE_BUTTON
+    #if USE_BUTTON
      buttonEnabled,
     #else
      0,
@@ -1432,11 +1433,11 @@ void NEWsendCurrent(char *outputBuffer)
   char temp[3];
   str.toCharArray(temp, 3);
   sprintf_P(outputBuffer, PSTR("%s %s"), outputBuffer, temp); // отправка пріложенію, яка мова вибрана у лампі
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_sound_on);
   //sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_volume);
-  #endif  // MP3_PLAYER_USE
-  #ifdef GENERAL_DEBUG
+  #endif  // USE_MP3_PLAYER
+  #if GENERAL_DEBUG
   LOG.print ("Output Bufer ");
   LOG.println (outputBuffer);
   #endif
@@ -1447,7 +1448,7 @@ void sendAlarms(char *outputBuffer)
       char k[2];
 	  bool alarm_change = false;
     	String configAlarm = readFile(F("config_alarm.json"), 512); 
-	#ifdef GENERAL_DEBUG
+	#if GENERAL_DEBUG
 		LOG.println ("\nТекущие установки будильника");
     	LOG.println(configAlarm);
 	#endif
@@ -1487,7 +1488,7 @@ void sendAlarms(char *outputBuffer)
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 1);
 
-	#ifdef GENERAL_DEBUG
+	#if GENERAL_DEBUG
 		LOG.println ("\nНовые установки будильника сохранены в файл");
     	LOG.println(configAlarm);
 	#endif
@@ -1501,7 +1502,7 @@ void sendSunsets(char *outputBuffer)
       char k[2];
     bool sunset_change = false;
       String configSunset = readFile(F("config_sunset.json"), 512); 
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
     LOG.println ("\nТекущие установки заката");
       LOG.println(configSunset);
   #endif
@@ -1541,7 +1542,7 @@ void sendSunsets(char *outputBuffer)
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 1);
 
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
     LOG.println ("\nНовые установки заката сохранены в файл");
       LOG.println(configSunset);
   #endif
@@ -1572,11 +1573,11 @@ String getValue(String data, char separator, int index)
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-#ifdef MP3_PLAYER_USE
+#if USE_MP3_PLAYER
 void sendVolume(char *outputBuffer)
 {
   sprintf_P(outputBuffer, PSTR("VOL %u %u"),
     eff_sound_on,
     eff_volume);
 }
-#endif  // MP3_PLAYER_USE
+#endif  // USE_MP3_PLAYER

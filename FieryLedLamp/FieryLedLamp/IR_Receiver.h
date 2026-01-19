@@ -1,41 +1,41 @@
-#ifdef IR_RECEIVER_USE
-#define USE_2_PULTS  //Закомментируйте эту строку, если вы используете только один пульт
+#if USE_IR_RECEIVER
+//#define USE_2_PULTS  //Закомментируйте эту строку, если вы используете только один пульт
 
 // ----- настройка ИК пульта 1 -----------------------
 
 //      Константа          код      кнопка        действие
-#define IR_ON_OFF      0xFF48B7 // "Power"      Вкл./Выкл. лампы
-#define IR_MUTE        0xFF28D7 // "Mute"       Вкл./Выкл. звук
-#define IR_PREV        0xFF9867 // "Right"      Предыдущий эффект
-#define IR_NEXT        0xFF8877 // "Left"       Следущий эффект
-#define IR_CYCLE       0xFF6897 // "Open/Close" Вкл./Выкл. избранное
-#define IR_EQ          0xFF38C7 // "Slow"       Эквалайзер
-#define IR_TIME        0xFF12ED // "Display"    Вывести время бег.стр.
-#define IR_VOL_DOWN    0xFFF00F // "Volum-"     Уменьшить громкость
-#define IR_VOL_UP      0xFF708F // "Volum+"     Увеличить громкость
-#define IR_IP          0xFFB04F // "R/L"        Показать IP адрес
-#define IR_BR_UP       0xFF807F // "Up"         Увеличить яркость
-#define IR_BR_DOWN     0xFF906F // "Down"       Уменьшить яркость
-#define IR_SP_UP       0xFF58A7 // "FWD"        Увеличить скорость
-#define IR_SP_DOWN     0xFFA857 // "Rev"        Уменьшить скорость
-#define IR_SC_UP       0xFF50AF // "Next"       Увеличить масштаб
-#define IR_SC_DOWN     0xFF40BF // "Prev"       Уменьшить масштаб
-#define IR_FAV_ADD     0xFFE817 // "Play/Pause" Добавить в избранное
-#define IR_FAV_DEL     0xFFE01F // "Stop"       Удалить из избранного
-#define IR_RND         0xFFD827 // "Menu"       Случайные настр. текущего эфф.
-#define IR_DEF         0xFFD02F // "Setup"      Настр. тек. эфф. по  умолчанию
-#define IR_FOLD_PREV   0xFF7887 // "Zoom"       Предыдущая пепка
-#define IR_FOLD_NEXT   0xFFF807 // "Title"      Следующая папка
-#define IR_1           0xFF827D // "1"          1
-#define IR_2           0xFFB24D // "2"          2
-#define IR_3           0xFFA25D // "3"          3
-#define IR_4           0xFF42BD // "4"          4
-#define IR_5           0xFF728D // "5"          5 Номер эффекта
-#define IR_6           0xFF629D // "6"          6
-#define IR_7           0xFFC23D // "7"          7
-#define IR_8           0xFFF20D // "8"          8
-#define IR_9           0xFFE21D // "9"          9
-#define IR_0           0xFF10EF // "0"          0
+#define IR_ON_OFF      0xFFA25D // "Power"               Вкл./Выкл. лампы
+#define IR_MUTE        0xFFE21D // "Mute"                Вкл./Выкл. звук
+#define IR_PREV        0xFF02FD // "Prev"                Предыдущий эффект
+#define IR_NEXT        0xFFC23D // "Next"                Следущий эффект
+#define IR_CYCLE       0xFF629D // "Mode"                Вкл./Выкл. избранное
+#define IR_EQ          0xFFE01F // "EQ"                  Эквалайзер
+#define IR_TIME        0xFF22DD // "Play/Pause"          Вывести время бег.стр.
+#define IR_VOL_DOWN    0xFFA857 // "Volum-"              Уменьшить громкость
+#define IR_VOL_UP      0xFF906F // "Volum+"              Увеличить громкость
+#define IR_IP          0xFFB04F // "U/SD"                Показать IP адрес
+#define IR_BR_UP       0xFE30CF //                    Увеличить яркость
+#define IR_BR_DOWN     0xFE10EF //                    Уменьшить яркость
+#define IR_SP_UP       0xFE18E7 //                    Увеличить скорость
+#define IR_SP_DOWN     0xFE38C7 //                    Уменьшить скорость
+#define IR_SC_UP       0xFE7A85 //                    Увеличить масштаб
+#define IR_SC_DOWN     0xFE5AA5 //                    Уменьшить масштаб
+#define IR_FAV_ADD     0xFE42BD //                    Добавить в избранное
+#define IR_FAV_DEL     0xFE52AD //                    Удалить из избранного
+#define IR_RND         0xFF9867 // "RPT"                 Случайные настр. текущего эфф.
+#define IR_DEF         0xFEB04F //                    Настр. тек. эфф. по  умолчанию
+#define IR_FOLD_PREV   0xFE7887 //                    Предыдущая папка
+#define IR_FOLD_NEXT   0xFEF807 //                    Следующая папка
+#define IR_1           0xFF30CF // "1"          1
+#define IR_2           0xFF18E7 // "2"          2
+#define IR_3           0xFF7A85 // "3"          3
+#define IR_4           0xFF10EF // "4"          4
+#define IR_5           0xFF38C7 // "5"          5 Номер эффекта
+#define IR_6           0xFF5AA5 // "6"          6
+#define IR_7           0xFF42BD // "7"          7
+#define IR_8           0xFF4AB5 // "8"          8
+#define IR_9           0xFF52AD // "9"          9
+#define IR_0           0xFF6897 // "0"          0
 
 #ifdef USE_2_PULTS
 
@@ -75,4 +75,4 @@
 #define IR2_0           0x40BF10EF // "0"
 #endif //USE_2_PULTS
 
-#endif  //IR_RECEIVER_USE
+#endif  //USE_IR_RECEIVER

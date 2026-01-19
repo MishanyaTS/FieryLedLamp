@@ -1,4 +1,4 @@
-#ifdef MP3_PLAYER_USE
+#if USE_MP3_PLAYER
 
 #ifdef DF_PLAYER_IS_ORIGINAL
   #define ADVERT_TIMER_1 800UL        // Задержка между командой старт и адверт (если озвучка не играет)
@@ -38,7 +38,7 @@ void mp3_setup()   {
       delay(mp3_delay);
       send_command(0x0C,FEEDBACK,0,0);  //Сброс модуля
       mp3_timer = millis();
-      #ifdef GENERAL_DEBUG
+      #if GENERAL_DEBUG
       LOG.println(F("\n mp3 Reset "));
       #endif
       mp3_player_connect = 2;
@@ -274,12 +274,6 @@ void play_sound()   {
           //CurrentFolder_last = CurrentFolder;
     }
     jsonWrite(configSetup, "fold_sel", CurrentFolder);
-    #ifdef GENERAL_DEBUG
-     LOG.print (F("\nCurrent folder last  "));
-     LOG.println (CurrentFolder_last);
-     LOG.print (F("\nCurrent folder "));
-     LOG.println (CurrentFolder);
-    #endif
 }
 
 void mp3_loop()   {
@@ -381,12 +375,6 @@ void mp3_loop()   {
   }
 
   if (mp3_folder_last != mp3_folder) {  // Проверка необходимости изменения папки озвучивания  (set_mp3_play_now && (mp3_folder_last != mp3_folder))
-        #ifdef GENERAL_DEBUG//MP3_DEBUG
-          LOG.print (F("mp3_folder_last = "));
-          LOG.println (mp3_folder_last);
-          LOG.print (F("mp3_folder = "));
-          LOG.println (mp3_folder);
-        #endif   
     mp3_folder_last = mp3_folder;
     //mp3_folder_change = 1;
     play_sound();

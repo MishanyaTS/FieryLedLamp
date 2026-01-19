@@ -240,7 +240,7 @@ void changePower()
       jsonWrite(configSetup, "cycle_on", 0);
   }
 
-  #if (USE_MQTT)
+  #if USE_MQTT
   if (espMode == 1U)
   {
     MqttManager::needToPublish = true;
@@ -303,7 +303,7 @@ else
       jsonWrite(configSetup, "cycle_on", 0);
   }
 
-  #if (USE_MQTT)
+  #if USE_MQTT
   if (espMode == 1U)
   {
     MqttManager::needToPublish = true;
@@ -338,10 +338,10 @@ void noTimeClear() {
 #endif //WARNING_IF_NO_TIME
 
 void Eff_Tick () {
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
     mp3_folder=effects_folders[currentMode];
-  #endif  // MP3_PLAYER_USE
-  #ifdef USE_MULTIPLE_LAMPS_CONTROL
+  #endif  // USE_MP3_PLAYER
+  #if USE_MULTIPLE_LAMPS_CONTROL
     if (repeat_multiple_lamp_control)  {
         for ( uint8_t n = 0; n < MODE_AMOUNT; n++)
         {
@@ -350,12 +350,12 @@ void Eff_Tick () {
                 break;
             }
         }
-        #ifdef MP3_PLAYER_USE
+        #if USE_MP3_PLAYER
         if (mp3_player_connect == 4) {
           mp3_loop();
           jsonWrite(configSetup, "fold_sel", CurrentFolder);
         }
-        #endif  // MP3_PLAYER_USE
+        #endif  // USE_MP3_PLAYER
         jsonWrite(configSetup, "br", modes[currentMode].Brightness);
         jsonWrite(configSetup, "sp", modes[currentMode].Speed);
         jsonWrite(configSetup, "sc", modes[currentMode].Scale);          

@@ -1,5 +1,5 @@
 // 
-#ifdef IR_RECEIVER_USE
+#if USE_IR_RECEIVER
 
 #define IR_REPEAT_TIMER      500   // Время ожидания повтора
 #define IR_TICK_TIMER        100    // Время между автоповтором
@@ -36,13 +36,13 @@ void IR_Receive_Handle ()   {       // Обработка принятого с�
         //bitSet (save_file_changes, 0);
         if (random_on && FavoritesManager::FavoritesRunning)
             selectedSettings = 1U;
-        #if (USE_MQTT)
+        #if USE_MQTT
            if (espMode == 1U) MqttManager::needToPublish = true;
         #endif
         #ifdef USE_BLYNK
           updateRemoteBlynkParams();
         #endif
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
           repeat_multiple_lamp_control = true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
         //Serial.println(Enter_Number);
@@ -365,7 +365,7 @@ void IR_Receive_Button_Handle()   {     //Обработка принятых к
 
         default: break;
     }
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print("IR_CODE = ");
     LOG.println(IR_Code, HEX);
     #endif  //GENERAL_DEBUG
@@ -373,7 +373,7 @@ void IR_Receive_Button_Handle()   {     //Обработка принятых к
 
 void IR_Power()   {
     if (dawnFlag == 1) {
-        #ifdef MP3_PLAYER_USE
+        #if USE_MP3_PLAYER
         if (alarm_sound_flag) {
            //myDFPlayer.pause();
            send_command(0x0E,0,0,0); //Пауза
@@ -381,11 +381,11 @@ void IR_Power()   {
            alarm_sound_flag = false;
         }
         else
-        #endif  // MP3_PLAYER_USE
+        #endif  // USE_MP3_PLAYER
         {
             manualOff = true;
             dawnFlag = 2;
-            #ifdef TM1637_USE
+            #if USE_TM1637
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
@@ -394,7 +394,7 @@ void IR_Power()   {
        return;
     }
         else if (sunsetFlag == 1) {
-        #ifdef MP3_PLAYER_USE
+        #if USE_MP3_PLAYER
         if (sunset_sound_flag) {
            //myDFPlayer.pause();
            send_command(0x0E,0,0,0); //Пауза
@@ -402,11 +402,11 @@ void IR_Power()   {
            sunset_sound_flag = false;
         }
         else
-        #endif  // MP3_PLAYER_USE
+        #endif  // USE_MP3_PLAYER
         {
             manualsOff = true;
             sunsetFlag = 2;
-            #ifdef TM1637_USE
+            #if USE_TM1637
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
@@ -433,7 +433,7 @@ void IR_Power()   {
     }
     loadingFlag = true;
 
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
       MqttManager::needToPublish = true;
@@ -442,7 +442,7 @@ void IR_Power()   {
     #ifdef USE_BLYNK
     updateRemoteBlynkParams();
     #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     if (ONflag) {
         repeat_multiple_lamp_control=true;
     }
@@ -453,34 +453,34 @@ void IR_Power()   {
 }
 
 void Mute()   {                // Вкл / Откл звука
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     if (mp3_player_connect == 4) {
       if (eff_sound_on) {
         eff_sound_on = 0;
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.println (F("Звук выключен"));
         #endif
       }
       else {
         eff_sound_on = eff_volume;
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.println (F("Звук включен"));
         #endif
       }
     }
     else  {
         showWarning(CRGB::Red, 1000, 250U);                    // мигание красным цветом 1 секунду
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.println (F("mp3 player не подключен"));
         #endif
     }
     jsonWrite(configSetup, "on_sound", eff_sound_on > 0 ? 1 : 0);
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-  #endif  // MP3_PLAYER_USE
+  #endif  // USE_MP3_PLAYER
 }
 
 void Prev_Next_eff(bool direction)   {
@@ -528,13 +528,13 @@ void Prev_Next_eff(bool direction)   {
     loadingFlag = true;
     //settChanged = true;
     //eepromTimeout = millis();
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 0;
     Display_Timer();
     #endif
     if (random_on && FavoritesManager::FavoritesRunning)
         selectedSettings = 1U;
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
       MqttManager::needToPublish = true;
@@ -543,7 +543,7 @@ void Prev_Next_eff(bool direction)   {
     #ifdef USE_BLYNK
     updateRemoteBlynkParams();
     #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
   }
@@ -564,7 +564,7 @@ void Cycle_on_off()   {
             showWarning(CRGB::Red, 500, 250U);        // мигание красным цветом 0.5 секунды
             EepromManager::EepromGet(modes);
         }
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (espMode == 1U)
         {
           MqttManager::needToPublish = true;
@@ -578,21 +578,21 @@ void Bright_Up_Down(bool direction)   {
     modes[currentMode].Brightness = constrain(direction ? modes[currentMode].Brightness + delta : modes[currentMode].Brightness - delta, 1, 255);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     SetBrightness(modes[currentMode].Brightness);
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Brightness);
     #endif    
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение яркости: %d\n"), modes[currentMode].Brightness);
     #endif
     //timeout_save_file_changes = millis();
     //bitSet (save_file_changes, 0);
     //settChanged = true;
     //eepromTimeout = millis();
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
         MqttManager::needToPublish = true;
@@ -605,21 +605,21 @@ void Speed_Up_Down(bool direction)   {
     modes[currentMode].Speed = constrain(direction ? modes[currentMode].Speed + delta : modes[currentMode].Speed - delta, 1, 255);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
     loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Speed);
     #endif    
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение скорости: %d\n"), modes[currentMode].Speed);
     #endif
     //timeout_save_file_changes = millis();
     //bitSet (save_file_changes, 0);
     //settChanged = true;
     //eepromTimeout = millis();
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
         MqttManager::needToPublish = true;
@@ -632,22 +632,22 @@ void Scale_Up_Down(bool direction)   {
     modes[currentMode].Scale = constrain(direction ? modes[currentMode].Scale + delta : modes[currentMode].Scale - delta, 1, 100);
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);
     loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Scale);
     #endif
     
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение масштаба: %d\n"), modes[currentMode].Scale);
     #endif
     //timeout_save_file_changes = millis();
     //bitSet (save_file_changes, 0);
     //settChanged = true;
     //eepromTimeout = millis();
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-    #if (USE_MQTT)
+    #if USE_MQTT
     if (espMode == 1U)
     {
         MqttManager::needToPublish = true;
@@ -656,18 +656,18 @@ void Scale_Up_Down(bool direction)   {
 }
 
 void Volum_Up_Down (bool direction)   {
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     eff_volume = constrain(direction ? eff_volume + 1 : eff_volume - 1, 1, 30);
     jsonWrite(configSetup, "vol", eff_volume);
     if (!dawnflag_sound) send_command(6,FEEDBACK,0,eff_volume); //Громкость
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(eff_volume);
     #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 }
 
 void Print_IP()   {
@@ -717,7 +717,7 @@ void Print_IP()   {
 }
 
 void Folder_Next_Prev(bool direction)    {
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     if (true) { //(!pause_on && !mp3_stop && eff_sound_on) {
     CurrentFolder = constrain(direction ? CurrentFolder + 1 : CurrentFolder - 1, 0, 99);
     jsonWrite(configSetup, "fold_sel", CurrentFolder);
@@ -726,32 +726,28 @@ void Folder_Next_Prev(bool direction)    {
       delay(mp3_delay);
     }
     }
-    #ifdef GENERAL_DEBUG
-     LOG.print (F("\nCurrent folder "));
-     LOG.println (CurrentFolder);
-    #endif
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 0;
     Display_Timer();
     #endif
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 }
 
 void Current_Eff_Rnd_Def(bool direction)   {
     if (direction) {
     selectedSettings = 1U;
     updateSets();
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
     else {
     setModeSettings();
     updateSets();    
-    #ifdef USE_MULTIPLE_LAMPS_CONTROL
+    #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
@@ -760,18 +756,18 @@ void Current_Eff_Rnd_Def(bool direction)   {
 }
 
 void IR_Equalizer()   {     // Устанавливаем эквалайзер
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     Equalizer++;
     if (Equalizer > 5) Equalizer = 0;
     jsonWrite(configSetup, "eq", Equalizer);
     send_command(0x07, FEEDBACK, 0, Equalizer); 
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
-    #ifdef TM1637_USE
+    #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(Equalizer);
     #endif
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 }
 
 void Favorit_Add_Del(bool direction)   {
@@ -791,7 +787,7 @@ void Digit_Handle (uint8_t digit)   {
         Enter_Digit_1 = 1;
         IR_Dgit_Enter_Timer = millis();
         Enter_Number = digit;
-        #ifdef TM1637_USE
+        #if USE_TM1637
         DisplayFlag = 3;
         Display_Timer(digit);
         #endif
@@ -801,7 +797,7 @@ void Digit_Handle (uint8_t digit)   {
         Enter_Digit_1 = 0;
         Enter_Number = Enter_Number * 10 + digit;
         currentMode = eff_num_correct[Enter_Number];
-        #ifdef TM1637_USE
+        #if USE_TM1637
         DisplayFlag = 3;
         Display_Timer(Enter_Number);
         #endif
@@ -815,13 +811,13 @@ void Digit_Handle (uint8_t digit)   {
         //bitSet (save_file_changes, 0);
         if (random_on && FavoritesManager::FavoritesRunning)
             selectedSettings = 1U;
-        #if (USE_MQTT)
+        #if USE_MQTT
            if (espMode == 1U) MqttManager::needToPublish = true;
         #endif
         #ifdef USE_BLYNK
           updateRemoteBlynkParams();
         #endif
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
           repeat_multiple_lamp_control = true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
         //Serial.println(Enter_Number);
@@ -829,4 +825,4 @@ void Digit_Handle (uint8_t digit)   {
     }
 }
 
-#endif //IR_RECEIVER_USE
+#endif //USE_IR_RECEIVER

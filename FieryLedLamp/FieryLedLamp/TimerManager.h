@@ -21,7 +21,7 @@ class TimerManager
            TimerManager::TimerRunning &&
            millis() >= TimerManager::TimeToFire)
       {
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Выключение по таймеру\n\n"));
         #endif
 
@@ -42,7 +42,7 @@ class TimerManager
         }
         else EepromManager::EepromGet(modes);
         changePower();        
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
         multiple_lamp_control ();
         #endif  //USE_MULTIPLE_LAMPS_CONTROL        
 

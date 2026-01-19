@@ -5,24 +5,36 @@
 // Или ничего не трогайте, если собирали, по схемам из этого архива.
 // В любом случае ВНИМАТЕЛЬНО прочтите файл ПРОЧТИ МЕНЯ!!!.txt из этого архива.
 // ==================================================================
-// Ссылка для менеджера плат:
-// ESP8266 :
+// Ссылки для менеджера плат:
+// ESP8266:
 // https://arduino.esp8266.com/stable/package_esp8266com_index.json
+// ESP32:
+// https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+// ESP8266:
 // При установке выбираем версию 2.7.4
 //
-// ESP32 :
-// https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-// Проверялось на ядре 1.0.6 и 2.0.14. На ядре 1.0.6 код занимает на 4% меньше места.
-// При не хватки памяти, смотреть файл "Увеличение раздела" в архиве "Hack"
-// Для использования ядра 1.0.6 закомментируйте соответствующую строку ниже.
-// Выбираем плату ESP32 Dev Module. На платах ESP32S2, ESP32S3, ESP32C2 работа не проверялась
+// ESP32:
+// При установке выбираем версию 2.0.14
+// Выбираем плату ESP32 Dev Module
+// Размер памяти 4MB with spiffs (1.43MB APP/1.1MB SPIFFS)
+//
+// ESP32-S3:
+// При установке выбираем версию 2.0.14
+// Выбираем плату ESP32S3 Dev Module
+// USB CDC On Boot: "Enabled"
+// Flash Size: "16MB (128MB)"
+// PSRAM: "OPI PSRAM"
+// Размер памяти "16MB with spiffs (6.25MB APP/3.43MB SPIFFS)"
 // =================================================================
 
 // ******************************* - ВЫБОР ПЛАТЫ И ЯДРА- *******************************************
 #ifdef ESP32           // Определено в IDE если используется ESP32 (не нужно изменять для ESP8266)
  #define ESP32_USED    // Используется контоллер ESP32 (не нужно менять для ESP8266)
- #define CORE_2_0_X    // Если используется ядро ​​ESP32 версии 1.0.Х, закомментируйте эту строку
-#endif
+ #define CORE_2_0_X
+ #ifdef BOARD_HAS_PSRAM
+    #define ESP32_S3_USED
+  #endif
+ #endif
 //===================================================================================================
 // Далее следует код проекта. Не меняйте здесь ничего, если вы не понимаете, к чему это приведет!!!
 //===================================================================================================
@@ -35,6 +47,7 @@
  #include <WiFiClient.h>
  #include <WiFiAP.h>
  #include <WebServer.h>
+ #include <WiFiClientSecure.h>
  #include <ESP32SSDP.h>               // https://github.com/luc-github/ESP32SSDP
  #include <time.h>
  #include <HardwareSerial.h>          // Используется аппаратный UART
@@ -48,6 +61,14 @@
  #include <ESP8266WebServer.h>
  #include <ElegantOTA.h>
  #define FASTLED_USE_PROGMEM 1        // просим библиотеку FASTLED экономить память контроллера на свои палитры
+ #endif
+ 
+#if (USE_WEATHER == 1)
+#ifndef ESP32_USED
+#include <coredecls.h>
+#include <TZ.h>
+#include <sntp.h>
+#endif
 #endif
 
 #include <FastLED.h>
@@ -55,13 +76,14 @@
 #include <EEPROM.h>
 #include <TimeLib.h>
 #include "Constants.h"
-#ifdef USE_RTC
+
+#if USE_RTC
   #ifdef RTC_3231
   #include <Wire.h>
     #include <RtcDS3231.h>
   #endif
 #endif
-#ifdef ESP_USE_BUTTON
+#if USE_BUTTON
 #include <GyverButton.h>
 #endif
 #ifdef USE_NTP
@@ -71,7 +93,7 @@
 #include "Types.h"
 #include "timerMinim.h"
 #include "fonts.h"
-#ifdef OTA
+#if USE_OTA
 #include "OtaManager.h"
 #endif
 #if USE_MQTT
@@ -92,10 +114,10 @@
 // #include "esp_int_wdt.h"
 // #include "esp_task_wdt.h"
 //#endif
-#ifdef TM1637_USE
+#if USE_TM1637
 #include "TM1637Display.h"
 #endif
-#ifdef MP3_PLAYER_USE
+#if USE_MP3_PLAYER
  #ifndef ESP32_USED
   #include <SoftwareSerial.h>     // Подключаем библиотеку для работы с последовательным интерфейсом
  #endif
@@ -104,16 +126,15 @@
  #else
   #define FEEDBACK  0
  #endif  //MP3_DEBUG
-#endif  // MP3_PLAYER_USE
-#ifdef IR_RECEIVER_USE
+#endif  // USE_MP3_PLAYER
+#if USE_IR_RECEIVER
  #include <IRremoteESP8266.h>  // https://github.com/crankyoldgit/IRremoteESP8266
  #include <IRrecv.h>
  #include "IR_Receiver.h"
-#endif  //IR_RECEIVER_USE
-
+#endif  //USE_IR_RECEIVER
 
 // --- ИНИЦИАЛИЗАЦИЯ ОБЪЕКТОВ ----------
-#ifdef USE_RTC
+#if USE_RTC
   #ifdef RTC_3231
     RtcDS3231<TwoWire> Rtc(Wire);
   #endif
@@ -149,7 +170,7 @@ time_t phoneTimeLastSync;
 
 uint8_t selectedSettings = 0U;
 
-#ifdef ESP_USE_BUTTON
+#if USE_BUTTON
 #if (BUTTON_IS_SENSORY == 1)
 GButton touch(BTN_PIN, LOW_PULL, NORM_OPEN);  // для сенсорной кнопки LOW_PULL
 #else
@@ -157,7 +178,7 @@ GButton touch(BTN_PIN, HIGH_PULL, NORM_OPEN); // для физической (н
 #endif
 #endif
 
-#ifdef OTA
+#if USE_OTA
 OtaManager otaManager(&showWarning);
 OtaPhase OtaManager::OtaFlag = OtaPhase::None;
 #endif
@@ -196,6 +217,18 @@ char packetBuffer[MAX_UDP_BUFFER_SIZE];  // buffer to hold incoming packet
 char inputBuffer[MAX_UDP_BUFFER_SIZE];
 static const uint8_t maxDim = max(WIDTH, HEIGHT);
 
+String yandexWeatherKey = "";
+bool useOpenWeather = false;
+String weatherApiKey = "";
+String weatherCity = "";
+String yandexGeoId = "";
+bool   preferYandex = true;
+bool actualYandex = true;
+float  currentTemp = -999.0f;
+String currentCondition = "";
+uint32_t weatherUpdateTimer = 0;
+const uint32_t WEATHER_UPDATE_INTERVAL = 600000UL;
+
 AlarmType alarms[7];
 static const uint8_t dawnOffsets[] PROGMEM = {5, 10, 15, 20, 25, 30, 40, 50, 60};   // опции для выпадающего списка параметра "Продолжительность Рассвета" (будильник); синхронизировано с android приложением
 uint8_t dawnMode;
@@ -212,12 +245,14 @@ bool manualsOff = false;
 int16_t offset = WIDTH;
 uint32_t scrollTimer = 0LL;
 
+unsigned long lastIRtime = 0;  // время последнего приёма ИК-сигнала
+
 uint8_t currentMode;
 bool loadingFlag = true;
 bool ONflag = false;
 //uint32_t eepromTimeout;
 //bool settChanged = false;
-#ifdef ESP_USE_BUTTON
+#if USE_BUTTON
  bool buttonEnabled = true; // Вкл \ откл кнопки
  #if defined(BUTTON_LOCK_ON_START)
   bool buttonBlocing = false;
@@ -242,6 +277,17 @@ char TextTicker [86];
 int Painting = 0; CRGB DriwingColor = CRGB(255, 255, 255);
 
 //..................... Переменные, добавленные с внедрением web интерфейса .............................................................................................
+#define _empty 0x00
+#define _dash  0b01000000
+#define _deg   0b01100011
+#define _C     0b00111001
+#define _0     0b00111111
+#define _E     0b01111001
+#define _F     0b01110001
+
+static float lastLoggedTemp = -999.0;
+const uint8_t degreeSymbol[1] = {0b01100011};
+const uint8_t cSymbol[1] = {0b00111001};
 
 uint8_t FPSdelay = DYNAMIC;
 uint8_t espMode ;
@@ -261,12 +307,12 @@ uint8_t first_entry = 0;
 uint16_t dawnPosition;
 uint16_t sunsetPosition;
 
-#ifdef USE_MULTIPLE_LAMPS_CONTROL
+#if USE_MULTIPLE_LAMPS_CONTROL
 char Host1[16], Host2[16], Host3[16], Host4[16], Host5[16];
 uint8_t ml1, ml2, ml3, ml4, ml5;
 #endif //USE_MULTIPLE_LAMPS_CONTROL
 
-#ifdef MP3_PLAYER_USE
+#if USE_MP3_PLAYER
 uint8_t mp3_folder=1;                // Текущая папка для воспроизведения.
 uint8_t alarm_sound_on =false;       // Включить/выключить звук будильника
 uint8_t sunset_sound_on =false;      // Включить/выключить звук заката
@@ -289,23 +335,23 @@ bool night_advert_sound_on;          // Вкл.Выкл озвучивания �
 bool alarm_advert_sound_on;          // Вкл.Выкл озвучивания времени будильником
 uint8_t mp3_player_connect = 0;      // Плеер не подключен. true - подключен.
 uint8_t mp3_folder_last=255;         // Предыдущая папка для воспроизведения
-//uint8_t mp3_folder_change =0;        // Указывает, была ли изменена папка
+//uint8_t mp3_folder_change =0;      // Указывает, была ли изменена папка
 bool set_mp3_play_now=false;         // Указывает, надо ли играть сейчас мелодии
 uint32_t alarm_timer;                // Периодичность проверки и плавного изменения громкости будильника
-uint32_t sunset_timer;                // Периодичность проверки и плавного изменения громкости заката
+uint32_t sunset_timer;               // Периодичность проверки и плавного изменения громкости заката
 uint32_t mp3_timer = 0;
-bool mp3_stop = true;                        // Озвучка эффектов остановлена
-bool pause_on = true;                        // Озвучка эффектов на паузе. false - не на паузе
-uint8_t eff_volume = 9;                      // Громкость воспроизведения
-uint8_t eff_sound_on = 0;                    // Звук включен - !0 (true), выключен - 0
-uint8_t CurrentFolder;                       // Папка, на которую переключились (будет проигрываться)
-uint8_t CurrentFolder_last = 0;              // Предыдущая текущая папка
+bool mp3_stop = true;                // Озвучка эффектов остановлена
+bool pause_on = true;                // Озвучка эффектов на паузе. false - не на паузе
+uint8_t eff_volume = 9;              // Громкость воспроизведения
+uint8_t eff_sound_on = 0;            // Звук включен - !0 (true), выключен - 0
+uint8_t CurrentFolder;               // Папка, на которую переключились (будет проигрываться)
+uint8_t CurrentFolder_last = 0;      // Предыдущая текущая папка
 #ifdef ESP32_USED
- HardwareSerial mp3(1);  // Используем UART1
+ HardwareSerial mp3(1);              // Используем UART1
 #else
  SoftwareSerial mp3(MP3_RX_PIN, MP3_TX_PIN);  // Создаём объект mySoftwareSerial и указываем выводы, к которым подлючен плеер (RX, TX)
 #endif
-//#ifndef TM1637_USE
+//#ifndef USE_TM1637
 // uint8_t minute_tmp;
 //#endif
 uint8_t mp3_receive_buf[10];
@@ -314,8 +360,18 @@ uint16_t ADVERT_TIMER_H, ADVERT_TIMER_M; // Продолжительность �
 uint8_t mp3_delay;                       // Задержка между командами проигрывателя
 uint8_t send_sound = 1;                  // Передавать или нет сомнительным параметрам звука (папка,озвучивание_on/off,громкость)
 uint8_t send_eff_volume = 1;             // Передавать или нет озвучивания_on/off, громкость
-#endif  // MP3_PLAYER_USE
-#ifdef TM1637_USE
+#endif  // USE_MP3_PLAYER
+#if USE_TM1637
+uint32_t displaySwitchTimer = 0;
+uint32_t weatherErrTimer   = 0;
+uint32_t weatherErrBlinkTimer = 0;
+bool showClock = true;
+bool weatherErrActive = false;
+bool weatherErrBlinkState = true;
+uint32_t CLOCK_SHOW_INTERVAL = 10000;
+uint32_t WEATHER_SHOW_INTERVAL = 5000;
+const uint32_t WEATHER_ERR_TIME  = 3000;
+const uint32_t WEATHER_ERR_BLINK = 500;
 uint8_t DispBrightness = 1;          // +++ Яркость дисплея от 0 до 255(5 уровней яркости с шагом 51). 0 - дисплей погашен 
 bool dotFlag = false;                // +++ Флаг: в часах рисуется двоеточие или нет
 uint32_t tmr_clock = 0;              // +++ Таймер мигания разделителя часов на дисплее
@@ -325,16 +381,16 @@ bool aDirection = false;             // +++ Направление измене�
 uint32_t DisplayTimer;               // Время отображения номера эффекта
 uint8_t LastEffect = 255;            // Последний Проигрываемый эффект
 uint8_t DisplayFlag=0;               // Флаг, показывающий, что отображается номер эффекта и папки
- #ifdef MP3_PLAYER_USE
+ #if USE_MP3_PLAYER
  uint8_t LastCurrentFolder = 255;    // Проигрываемая папка
- #endif  // MP3_PLAYER_USE
-#endif  //TM1637_USE
+ #endif  // USE_MP3_PLAYER
+#endif  //USE_TM1637
 
-#ifdef HEAP_SIZE_PRINT
+#if HEAP_SIZE_PRINT
 uint32_t mem_timer;
 #endif //HEAP_SIZE_PRINT 
 
-#ifdef IR_RECEIVER_USE
+#if USE_IR_RECEIVER
  uint32_t IR_Code = 0x00000000;
  uint32_t IR_Repeat_Timer;
  uint32_t IR_Tick_Timer;
@@ -346,7 +402,7 @@ uint32_t mem_timer;
 
  IRrecv irrecv(IR_RECEIVER_PIN);
  decode_results results;
-#endif  //IR_RECEIVER_USE
+#endif  //USE_IR_RECEIVER
 
 uint8_t RuninTextOverEffects = 0;
 uint32_t Last_Time_RuninText = 0;
@@ -371,18 +427,38 @@ uint8_t AutoBrightness;                // Автояркость on/off
 uint8_t last_day_night = 0;
 bool hasRtc = true;
 
-#ifdef USE_RTC
+// Инициализация LittleFS
+void FS_init(void) {
+  if (!LittleFS.begin()) {
+    LOG.println(F("Ошибка монтирования LittleFS!"));
+    return;
+  }
+  HTTP.on("/edit", HTTP_GET, []() {
+    if (!handleFileRead("/edit.htm"))
+      handleFileRead("/edit.html");
+  });
+  HTTP.on("/edit", HTTP_PUT, handleFileCreate);
+  HTTP.on("/edit", HTTP_DELETE, handleFileDelete);
+  HTTP.on("/edit", HTTP_POST, []() {
+  }, handleFileUpload);
+  HTTP.on("/list", HTTP_GET, handleFileList);
+  HTTP.onNotFound([]() {
+    if (!handleFileRead(HTTP.uri())) {
+      handleFileRead("/index.html");
+    }
+  });
+}
+
+#if USE_RTC
 bool wasError(const char* errorTopic = "")
 {
   #ifdef RTC_3231
     uint8_t error = Rtc.LastError();
-    if (error != 0)
-    {
+    if (error != 0){
         LOG.println(errorTopic);
         LOG.println(error);
 
-        switch (error)
-        {
+        switch (error){
         case Rtc_Wire_Error_None:
             LOG.println(F("(none?!)"));
             break;
@@ -422,29 +498,26 @@ void setup()  //================================================================
   ESP.wdtEnable(WDTO_8S);
   #endif
 
-  LOG.print(F("\n\n\nSYSTEM START"));
+  LOG.println(F("\n\n\nSYSTEM START"));
   #ifdef ESP32
-  LOG.print (F("  ESP32\n"));
+  LOG.print (F(" ESP32\n"));
   #endif
   #ifdef ESP8266
-  LOG.print (F("  ESP8266\n"));
+  LOG.print (F(" ESP8266\n"));
   #endif
 
 #ifndef USE_RTC
   hasRtc = false;
 #endif
 
-  #if defined(ESP_USE_BUTTON) && defined(BUTTON_LOCK_ON_START)
-    #if (BUTTON_IS_SENSORY == 1)
-        if (digitalRead(BTN_PIN)) {
-            buttonBlocing = true;
-        }
-    #endif
-    #if (BUTTON_IS_SENSORY == 0)
-        if (!digitalRead(BTN_PIN)) {
-            buttonBlocing = true;
-        }
-    #endif
+#if USE_BUTTON
+#if defined(BUTTON_LOCK_ON_START) && BUTTON_LOCK_ON_START
+#if (BUTTON_IS_SENSORY == 1)
+  if (digitalRead(BTN_PIN)) buttonEnabled = false;
+#else
+  if (!digitalRead(BTN_PIN)) buttonEnabled = false;
+#endif
+#endif
 #endif
 
   // ПИНЫ
@@ -463,8 +536,8 @@ void setup()  //================================================================
   #endif
   
   // часы
-#ifdef TM1637_USE
-  LOG.print(F("\nСтарт дисплея TM1637\n"));
+#if USE_TM1637
+  LOG.println(F("Старт дисплея TM1637"));
   tmr_clock = millis();                                     // +++ устанавливаем начальное значение счетчика
   display.setBrightness(DispBrightness);                    // +++ яркость дисплея максимальная = 255
   display.displayByte(_empty, _empty, _empty, _empty);      // +++ очистка дисплея
@@ -472,19 +545,13 @@ void setup()  //================================================================
 #endif
 
    //File Fystem
-  #ifdef GENERAL_DEBUG  
+  #if GENERAL_DEBUG  
   LOG.print(F("\nСтарт файловой системы\n"));
   #endif
   FS_init();  //Запускаем файловую систему
-  #ifdef GENERAL_DEBUG
-  LOG.print(F("Чтение файла конфигурации\n"));
-  #endif
   configSetup = readFile(F("config.json"), 2048);
-  #ifdef GENERAL_DEBUG  
-  LOG.println(configSetup);
-  #endif
   //Настраиваем и запускаем SSDP интерфейс
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.print(F("Старт SSDP\n"));
   #endif
   SSDP_init();
@@ -498,7 +565,7 @@ void setup()  //================================================================
   random_on = jsonReadtoInt(configSetup, "random_on");
   espMode = jsonReadtoInt(configSetup, "ESP_mode");
   PRINT_TIME = jsonReadtoInt(configSetup, "print_time");
-  #ifdef ESP_USE_BUTTON
+  #if USE_BUTTON
    buttonEnabled = jsonReadtoInt(configSetup, "button_on");
   #endif
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
@@ -515,7 +582,7 @@ void setup()  //================================================================
   SpeedRunningText = jsonReadtoInt(configSetup, "spt");      // Скорость бегущей строки
   ColorRunningText = jsonReadtoInt(configSetup, "sct");      // Цвет бегущей строки
   ColorTextFon = jsonReadtoInt(configSetup, "ctf");          // Выводить бегущую строку на цветном фоне
-  jsonWrite(configSetup, "ver", FLL_VERSION);                // Версия ПО
+  jsonWrite(configSetup, "ver", VERSION);                // Версия ПО
   AutoBrightness = jsonReadtoInt(configSetup, "auto_bri");   // Автоматическое понижение яркости on/off
   #ifdef USE_NTP
   (jsonRead(configSetup, "ntp")).toCharArray (NTP_ADDRESS, (jsonRead(configSetup, "ntp")).length()+1);
@@ -526,7 +593,7 @@ void setup()  //================================================================
   localTimeZone.setRules (summerTime, winterTime);
   #endif
   
-  #ifdef USE_RTC
+  #if USE_RTC
     #ifdef RTC_3231
     Wire.begin(I2C_SDA, I2C_SCL);
     #endif
@@ -537,49 +604,33 @@ void setup()  //================================================================
     utcCompiled.InitWithEpoch32Time(utcCompiledUnix);
     printDateTime(utcCompiled);
 
-    if (!Rtc.IsDateTimeValid())
-    {
-        if (!wasError("setup IsDateTimeValid"))
-        {
-            // Common Causes:
-            //    1) first time you ran and the device wasn't running yet
-            //    2) the battery on the device is low or even missing
+    if (!Rtc.IsDateTimeValid()){
+        if (!wasError("setup IsDateTimeValid")){
             LOG.println(F("RTC lost confidence in the DateTime!"));
-            // following line sets the RTC to the date & time this sketch was compiled
-            // it will also reset the valid flag internally unless the Rtc device is
-            // having an issue
             Rtc.SetDateTime(utcCompiled);
         }
     }
 
-    if (!Rtc.GetIsRunning())
-    {
-        if (!wasError("setup GetIsRunning"))
-        {
+    if (!Rtc.GetIsRunning()){
+        if (!wasError("setup GetIsRunning")){
             LOG.println(F("RTC was not actively running, starting now"));
             Rtc.SetIsRunning(true);
         }
     }
 
     RtcDateTime now = Rtc.GetDateTime();
-    if (!wasError("setup GetDateTime"))
-    {
-        if (now < utcCompiled)
-        {
+    if (!wasError("setup GetDateTime")){
+        if (now < utcCompiled){
             LOG.println(F("RTC is older than compile time, updating DateTime"));
             Rtc.SetDateTime(utcCompiled);
         }
-        else if (now > utcCompiled)
-        {
+        else if (now > utcCompiled){
             LOG.println(F("RTC is newer than compile time, this is expected"));
         }
-        else if (now == utcCompiled)
-        {
+        else if (now == utcCompiled){
             LOG.println(F("RTC is the same as compile time, while not expected all is still fine"));
         }
     }
-    // never assume the Rtc was last configured by you, so
-    // just clear them to your needed state
     #ifdef RTC_3231
     Rtc.Enable32kHzPin(false);
     wasError("setup Enable32kHzPin");
@@ -588,14 +639,14 @@ void setup()  //================================================================
     #endif
   #endif //USE_RTC
   
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
   eff_volume = jsonReadtoInt(configSetup, "vol");
   eff_sound_on = (jsonReadtoInt(configSetup, "on_sound")==0)? 0 : eff_volume;
   alarm_volume = jsonReadtoInt(configSetup, "alm_vol");
-  sunset_volume = jsonReadtoInt(configSetup, "sun_vol");
   AlarmFolder = jsonReadtoInt(configSetup, "alm_fold");
-  SunsetFolder = jsonReadtoInt(configSetup, "sun_fold");
   alarm_sound_on = jsonReadtoInt(configSetup, "on_alm_snd");
+  sunset_volume = jsonReadtoInt(configSetup, "sun_vol");
+  SunsetFolder = jsonReadtoInt(configSetup, "sun_fold");
   sunset_sound_on = jsonReadtoInt(configSetup, "on_sun_snd");
   day_advert_sound_on = jsonReadtoInt(configSetup,"on_day_adv");
   night_advert_sound_on = jsonReadtoInt(configSetup,"on_night_adv");
@@ -605,25 +656,16 @@ void setup()  //================================================================
   Equalizer = jsonReadtoInt(configSetup, "eq");
   send_sound = jsonReadtoInt(configSetup, "s_s");
   send_eff_volume = jsonReadtoInt(configSetup, "s_e_v");
-  #endif // MP3_PLAYER_USE
+  #endif // USE_MP3_PLAYER
   {
   String configHardware = readFile(F("config_hardware.json"), 1024);    
   current_limit = jsonReadtoInt(configHardware, "cur_lim");
   MATRIX_TYPE = jsonReadtoInt(configHardware, "m_t");
   ORIENTATION = jsonReadtoInt(configHardware, "m_o");
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
   ADVERT_TIMER_H = 100 * jsonReadtoInt(configHardware, "tim_h");
   ADVERT_TIMER_M = 100 * jsonReadtoInt(configHardware, "tim_m");
   mp3_delay = 10 * jsonReadtoInt(configHardware, "delay");
-  #ifdef GENERAL_DEBUG
-     LOG.print (F("\nADVERT_TIMER_H = "));
-     LOG.println (ADVERT_TIMER_H);
-     LOG.print (F("ADVERT_TIMER_M = "));
-     LOG.println (ADVERT_TIMER_M);
-     LOG.print (F("mp3_delay = "));
-     LOG.println (mp3_delay);
-  #endif
-
   #endif
   }
   {
@@ -645,20 +687,6 @@ void setup()  //================================================================
   Gateway.fromString(jsonRead(configIP, "gateway"));
   Subnet.fromString(jsonRead(configIP, "subnet"));
   DNS1.fromString(jsonRead(configIP, "dns"));
-  #ifdef GENERAL_DEBUG
-     LOG.print (F("\nUse Static IP = "));
-     LOG.println (use_static_ip);
-     LOG.print (F("Static IP = "));
-     LOG.println (Static_IP);
-     LOG.print (F("Gateway = "));
-     LOG.println (Gateway);
-     LOG.print (F("Subnet = "));
-     LOG.println (Subnet);
-     LOG.print (F("DNS1 = "));
-     LOG.println (DNS1);
-     LOG.print (F("DNS2 = "));
-     LOG.println (DNS2);
-  #endif
   }
 
   // TELNET
@@ -688,31 +716,10 @@ void setup()  //================================================================
   FastLED.clear();
   FastLED.show();
 
-
-  // КНОПКА
-  #if defined(ESP_USE_BUTTON)
-  touch.setStepTimeout(BUTTON_STEP_TIMEOUT);
-  touch.setClickTimeout(BUTTON_CLICK_TIMEOUT);
-  touch.setDebounce(BUTTON_SET_DEBOUNCE);
-    #ifdef BUTTON_LOCK_ON_START
-    if (buttonBlocing) {
-       buttonEnabled = false;
-       //jsonWrite(configSetup, "button_on", buttonEnabled);
-       //saveConfig();
-    }
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
-    #endif
-  #endif
-
 #ifdef USE_SHUFFLE_FAVORITES // первоначальная очередь избранного до перемешивания
     for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       shuffleFavoriteModes[i] = i;
 #endif
-
 
   // EEPROM
   EepromManager::InitEepromSettings(modes, &(restoreSettings)); // инициализация EEPROM; запись начального состояния настроек, если их там ещё нет; инициализация настроек лампы значениями из EEPROM
@@ -739,24 +746,24 @@ void setup()  //================================================================
   FavoritesManager::Dispersion = jsonReadtoInt(configSetup, "disp");
   FavoritesManager::UseSavedFavoritesRunning = jsonReadtoInt(configSetup, "cycle_allwase");
   jsonWrite(configSetup, "tmr", 0);
-  #ifdef ESP_USE_BUTTON
+  #if USE_BUTTON
   jsonWrite(configSetup, "button_on", buttonEnabled);
   #endif
   first_entry = 1;
   handle_cycle_set();  // Чтение выбранных эффектов
   first_entry = 0;
-#ifdef MP3_PLAYER_USE
+#if USE_MP3_PLAYER
   first_entry = 1;
   handle_sound_set();  //Чтение выбранных папок
   first_entry = 0;
-#endif  // MP3_PLAYER_USE
-#ifdef USE_MULTIPLE_LAMPS_CONTROL  
+#endif  // USE_MP3_PLAYER
+#if USE_MULTIPLE_LAMPS_CONTROL  
   multilamp_get ();   // Чтение из файла адресов синхронно управляемых ламп 
 #endif //USE_MULTIPLE_LAMPS_CONTROL
   
   // MP3 Player
    
-  #ifdef MP3_PLAYER_USE
+  #if USE_MP3_PLAYER
    #ifdef ESP32_USED
     mp3.begin(9600, SERIAL_8N1, MP3_RX_PIN, MP3_TX_PIN);
    #else
@@ -798,7 +805,7 @@ void setup()  //================================================================
     LOG.print(F("Старт WiFi в режиме точки доступа\n"));
     LOG.print(F("IP адрес: "));
     LOG.println(WiFi.softAPIP());
-   #ifdef GENERAL_DEBUG
+   #if GENERAL_DEBUG
     LOG.println (F("*******************************************"));
     LOG.print (F("Heap Size after connection AP mode = "));
     LOG.println(ESP.getFreeHeap());
@@ -876,7 +883,7 @@ void setup()  //================================================================
 
   //Настраиваем и запускаем HTTP интерфейс
   User_setings ();
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.print (F("Старт WebServer\n"));
   #endif
   HTTP_init();
@@ -894,7 +901,7 @@ void setup()  //================================================================
 
 
   // MQTT
-  #if (USE_MQTT)
+  #if USE_MQTT
   String configMQTT = readFile(F("config_mqtt.json"), 512);
   String str;
   if(!MqttServer.fromString(jsonRead(configMQTT, "mq_ip"))){
@@ -918,7 +925,7 @@ void setup()  //================================================================
   MqttPort = jsonReadtoInt(configMQTT, "mq_port");
   MqttOn = jsonReadtoInt(configMQTT, "mq_on");
   MqttPeriod = jsonReadtoInt(configMQTT, "mq_prd");
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
    LOG. println("Start MQTT");
    LOG.print("MQTT server ");
    if(mqttIPaddr)
@@ -953,25 +960,39 @@ void setup()  //================================================================
   loadingFlag = true;
   
   //IR receiver
-  #ifdef IR_RECEIVER_USE
+  #if USE_IR_RECEIVER
     irrecv.enableIRIn();  // Start the IR receiver
     IR_Tick_Timer = millis();
     IR_Repeat_Timer = millis();
-  #endif  //IR_RECEIVER_USE
+  #endif  //USE_IR_RECEIVER
 
   //TM1637
-  #ifdef TM1637_USE
-    DisplayTimer = millis();
-    #ifdef MP3_PLAYER_USE
-      CurrentFolder = effects_folders[currentMode];
-      mp3_folder = CurrentFolder;
-      jsonWrite(configSetup, "fold_sel", CurrentFolder);
-    #endif  // MP3_PLAYER_USE
-  #endif  //TM1637_USE
+#if USE_TM1637
+    uint32_t tmpClock   = jsonReadtoInt(configSetup, "clock_time");
+    uint32_t tmpWeather = jsonReadtoInt(configSetup, "weather_time");
+    if (tmpClock < 3)   tmpClock = 10;
+    if (tmpWeather < 3) tmpWeather = 5;
+    CLOCK_SHOW_INTERVAL   = tmpClock * 1000UL;
+    WEATHER_SHOW_INTERVAL = tmpWeather * 1000UL;
+#endif
 
+  // ПОГОДА
+#if (USE_WEATHER == 1)
+  weatherApiKey = jsonRead(configSetup, "openweather_key");
+  yandexGeoId = jsonRead(configSetup, "yandex_geo");
+  if (yandexGeoId.length() == 0) yandexGeoId = "1091";
+  weatherCity = jsonRead(configSetup, "city");
+  inClockWeatherMode = jsonReadtoInt(configSetup, "show_weather");
+  preferYandex = (jsonReadtoInt(configSetup, "weather_source") == 0);
+  if (inClockWeatherMode) weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 10000;
+#endif
+
+  #if USE_TM1637
+  DisplayTimer = millis();
+#endif
   my_timer=millis();
   
-  #ifdef HEAP_SIZE_PRINT
+  #if HEAP_SIZE_PRINT
    mem_timer = millis();
   #endif //HEAP_SIZE_PRINT 
 }
@@ -979,20 +1000,18 @@ void setup()  //================================================================
 
 void loop()  //====================================================================  void loop()  ===========================================================================
 {
-  #ifdef USE_RTC
+  #if USE_RTC
      if (hasRtc) {
       #ifdef RTC_3231
-       if (!Rtc.IsDateTimeValid())
-       #endif
-       {
-           if (!wasError("loop IsDateTimeValid"))
-           {
-               // Common Causes:
-               //    1) the battery on the device is low or even missing and the power line was disconnected
-               LOG.println(F("RTC lost confidence in the DateTime!"));
-           }
-       }
-     }
+  if (!Rtc.IsDateTimeValid()) {
+#else
+  {
+#endif
+    if (!wasError("loop IsDateTimeValid")) {
+      LOG.println(F("RTC lost confidence in the DateTime!"));
+    }
+  }
+ }
   #endif //USE_RTC
 
  if (espMode) {
@@ -1028,7 +1047,7 @@ void loop()  //=================================================================
         LOG.println(F(" dbm"));
         connect = true;
         lastResolveTryMoment = 0;
-      #ifdef GENERAL_DEBUG
+      #if GENERAL_DEBUG
         LOG.println (F("***********************************************"));
         LOG.print (F("Heap Size after connection Station mode = "));
         LOG.println(ESP.getFreeHeap());
@@ -1060,13 +1079,16 @@ void loop()  //=================================================================
         delay (0);
     }
  }
- 
- if (connect || !espMode)  { my_timer = millis(); }
- #ifdef MAIN_CYCLES_PER_SECOND
-   int32_t my_timer2 = millis();
-   uint16_t mcps_counter = 0;
- #endif 
+
 do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++========= Главный цикл ==========+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#if (USE_WEATHER == 1)  // Погода обновляется раз в 10 минут
+    if (inClockWeatherMode && WiFi.status() == WL_CONNECTED &&
+        millis() - weatherUpdateTimer >= WEATHER_UPDATE_INTERVAL) {
+      updateWeather();
+      weatherUpdateTimer = millis();
+    }
+#endif
 
 // Если не устойчивое подключение к WiFi, или не создаётся точка доступа, или лампа не хочет подключаться к вашей сети или вы не можете подключиться к точке доступа, то может быть у вас не качественная плата.
   delay (0);   //Для некоторых плат ( особенно без металлического экрана над ESP и Flash памятью ) эта задержка должна быть увеличена. Подбирается индивидуально в пределах 1-12 мс до устойчивой работы WiFi. Чем меньше, тем лучше. Качественные платы работают с задержкой 0.
@@ -1080,23 +1102,25 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
  
   parseUDP();
   yield();
-  #ifdef TM1637_USE
-    if (millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
+  
+  #if USE_TM1637
+     if (millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
       tmr_clock = millis();                     // обновляем значение счетчика
+      if (inClockWeatherMode && showClock && DisplayFlag == 0) {
       dotFlag = !dotFlag;                       // инверсия флага
       boolean points[4] = {0,0,0,0};
       points[1] = dotFlag;
-      if (!DisplayFlag) display.setSegmentPoints(points); // выкл/выкл двоеточия 
-      Display_Timer ();
+      display.setSegmentPoints(points);
+      }
+
+    Display_Timer();
+   }
+    if (dawnFlag == 1 || sunsetFlag == 1) {
+      clockTicker_blink();
     }
-    if (dawnFlag == 1) {
-    clockTicker_blink();
-    }
-    if (sunsetFlag == 1) {
-    clockTicker_blink();
-    }
-  #endif  //TM1637_USE
-  #ifdef MP3_PLAYER_USE
+  #endif  //USE_TM1637
+  
+  #if USE_MP3_PLAYER
   switch (mp3_player_connect){
       case 0: break;
       case 1: read_command(1);
@@ -1119,7 +1143,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
      
   effectsTick();
   
-  #ifdef HEAP_SIZE_PRINT
+  #if HEAP_SIZE_PRINT
    if (millis() - mem_timer > 10000UL) {
        mem_timer = millis();
        LOG.print (F("Heap Size = "));
@@ -1127,18 +1151,21 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
    }
   #endif //HEAP_SIZE_PRINT
   
-  #ifdef IR_RECEIVER_USE
-       IR_Receive_Handle();
-    if (millis() - IR_Tick_Timer > 100)
-    {
+  #if USE_IR_RECEIVER
+       if (irrecv.decode(&results)) {
+        lastIRtime = millis();
+        IR_Code = results.value;
+        IR_Data_Ready = 1;
+        irrecv.resume();
+      }
+      if (millis() - IR_Tick_Timer > 100) {
         IR_Tick_Timer = millis();
-        if (IR_Data_Ready) 
-        {
-            IR_Receive_Button_Handle();
-            IR_Data_Ready =0;
-        }       
-    }
-  #endif  //IR_RECEIVER_USE
+        if (IR_Data_Ready) {
+          IR_Receive_Button_Handle();
+          IR_Data_Ready = 0;
+        }
+      }
+  #endif  //USE_IR_RECEIVER
 
   //EepromManager::HandleEepromTick(&settChanged, &eepromTimeout, modes);
     yield();
@@ -1148,11 +1175,11 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     timeTick();
   #endif
 
-  #ifdef ESP_USE_BUTTON
+  #if USE_BUTTON
     buttonTick();
   #endif
 
-  #ifdef OTA
+  #if USE_OTA
   otaManager.HandleOtaUpdate();                             // ожидание и обработка команды на обновление прошивки по воздуху
   #endif
                                                             
@@ -1210,10 +1237,10 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     jsonWrite(MqttSnd, "bri", (String)modes[currentMode].Brightness);   // Яркость эффектов
     jsonWrite(MqttSnd, "spd", (String)modes[currentMode].Speed);        // Скорость эффектов
     jsonWrite(MqttSnd, "sca", (String)modes[currentMode].Scale);        // Масштаб эффектов
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     jsonWrite(MqttSnd, "sound", eff_sound_on ? "ON" : "OFF");    // Включить/выключить озвучивание эффектов
     jsonWrite(MqttSnd, "vol", (String)eff_volume);                  // Громкость
-    #endif //MP3_PLAYER_USE
+    #endif //USE_MP3_PLAYER
     jsonWrite(MqttSnd, "runt", (String)RuninTextOverEffects);           // Периодичность ввода бегущей строки
     jsonWrite(MqttSnd, "runc", (String)ColorRunningText);               // Цвет бегущей строки
     jsonWrite(MqttSnd, "runf", (String)ColorTextFon);                   // Фон бегущей строки. 0-черный фон; 1-цветный фон
@@ -1247,22 +1274,12 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     #else
      ESP.wdtFeed();
     #endif
-  #ifdef MAIN_CYCLES_PER_SECOND
-    mcps_counter ++;
-    if ((millis() - my_timer2) > 1000)
-    {
-        my_timer2 = millis();
-        LOG.print("MAIN CYCLES PER SECOND = ");
-        LOG.println(mcps_counter);
-        mcps_counter = 0;
-    }
-  #endif
 } while (connect);
 }
 
 #define countof(a) (sizeof(a) / sizeof(a[0]))
 
-#ifdef USE_RTC
+#if USE_RTC
 void printDateTime(const RtcDateTime& dt)
 {
     char datestring[26];
@@ -1279,3 +1296,255 @@ void printDateTime(const RtcDateTime& dt)
     LOG.println(datestring);
 }
 #endif
+
+// ==================================================================== ПОГОДА ==================================================================
+
+#if (USE_WEATHER == 1)
+
+String buildWeatherDescription(String baseDesc, float windSpeed = 0, int weatherId = 0, 
+                               String provider = "", float pressureMm = 0) {
+  String desc = baseDesc;
+
+  bool hasRain = desc.indexOf("дождь") != -1 || desc.indexOf("ливен") != -1 || desc.indexOf("осадки") != -1;
+  bool hasSnow = desc.indexOf("снег") != -1;
+  bool hasThunder = desc.indexOf("гроза") != -1;
+
+  if (provider == "openweather") {
+    if (weatherId >= 200 && weatherId < 700) {
+      if (!hasRain && !hasSnow && !hasThunder) {
+        if (weatherId >= 200 && weatherId < 300) desc += ", гроза";
+        else if (weatherId >= 300 && weatherId < 400) desc += ", морось";
+        else if (weatherId >= 500 && weatherId < 600) desc += ", идёт дождь";
+        else if (weatherId >= 600 && weatherId < 700) desc += ", идёт снег";
+      }
+    }
+  }
+  return desc;
+}
+
+String getYandexRussianDescription(String engCond, float windSpeed, int precType, float precStrength, 
+                                   float temp, float humidity = 0, float pressure = 0) {
+  String desc = "";
+
+  bool hasCondition = (engCond != "" && engCond != "unknown" && engCond != "null");
+
+  if (hasCondition) {
+    if (engCond == "clear") desc = "ясно";
+    else if (engCond == "partly-cloudy") desc = "малооблачно";
+    else if (engCond == "cloudy") desc = "облачно";
+    else if (engCond == "overcast") desc = "пасмурно";
+    else if (engCond == "drizzle" || engCond == "light-rain") desc = "небольшой дождь";
+    else if (engCond == "rain") desc = "дождь";
+    else if (engCond == "moderate-rain") desc = "умеренный дождь";
+    else if (engCond == "heavy-rain") desc = "сильный дождь";
+    else if (engCond == "continuous-heavy-rain") desc = "продолжительный сильный дождь";
+    else if (engCond == "showers") desc = "ливень";
+    else if (engCond == "wet-snow") desc = "дождь со снегом";
+    else if (engCond == "light-snow") desc = "небольшой снег";
+    else if (engCond == "snow") desc = "снег";
+    else if (engCond == "snow-showers") desc = "снегопад";
+    else if (engCond == "hail") desc = "град";
+    else if (engCond == "thunderstorm") desc = "гроза";
+    else if (engCond == "thunderstorm-with-rain") desc = "гроза с дождём";
+    else if (engCond == "thunderstorm-with-hail") desc = "гроза с градом";
+    else desc = engCond;
+  } else {
+    if (temp <= -20) desc = "экстремальный мороз";     // FIX
+    else if (temp <= -10) desc = "сильный мороз";
+    else if (temp <= -5) desc = "мороз";
+    else if (temp <= 0) desc = "морозно";
+    else if (temp <= 5) desc = "холодно";
+    else if (temp <= 12) desc = "прохладно";
+    else if (temp <= 18) desc = "комфортно";
+    else if (temp <= 24) desc = "тепло";
+    else if (temp <= 30) desc = "жарко";
+    else desc = "очень жарко";
+  }
+
+  // Осадки
+  if (precStrength > 0.0 && desc.indexOf("дождь") == -1 && desc.indexOf("снег") == -1) {
+    if (precType == 1) desc += ", идёт дождь";
+    else if (precType == 2) desc += ", идёт снег";
+    else if (precType == 3) desc += ", дождь со снегом";
+    else if (precType == 4) desc += ", град";
+  }
+
+  return desc;
+}
+
+void updateWeather() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  bool success = false;
+  actualYandex = false;  // по умолчанию считаем, что использовали OpenWeather
+
+  if (preferYandex && yandexGeoId.length() > 0 && yandexGeoId != "0") {
+    success = getWeatherFromYandex();
+    if (success) {
+      actualYandex = true;
+      LOG.println(F("Погода: Яндекс.Погода"));
+    } else {
+      LOG.println(F("Яндекс не ответил, переходим на OpenWeather"));
+    }
+  }
+
+  if (!success && weatherApiKey.length() > 10 && weatherCity.length() > 0) {
+    success = getWeatherFromOpenWeather();
+    if (success) {
+      actualYandex = false;
+      LOG.println(F("Погода: OpenWeather"));
+    }
+  }
+
+  if (!success) {
+    currentTemp = -999.0f;
+    currentCondition = "";
+    LOG.println(F("Погода: нет данных"));
+  } else if (currentTemp > -999.0f) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "На улице: %+.1f°C, %s", currentTemp, currentCondition.c_str());
+    LOG.println(buf);
+  }
+}
+
+// Яндекс.Погода
+bool getWeatherFromYandex() {
+  String url = "https://yandex.com/time/sync.json?geo=" + yandexGeoId + "&lang=ru";
+
+#if defined(ESP32_USED)
+  WiFiClientSecure client;
+  client.setInsecure();  // Игнорируем SSL-сертификаты
+  client.connect("yandex.com", 443);
+  if (!client.connected()) {
+    LOG.println(F("Не удалось подключиться к Yandex"));
+    return false;
+  }
+
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: yandex.com\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
+
+  String line;
+  String payload = "";
+  bool headersEnded = false;
+  while (client.connected()) {
+    line = client.readStringUntil('\n');
+    if (!headersEnded) {
+      if (line == "\r") headersEnded = true;
+    } else {
+      payload += line;
+    }
+  }
+  client.stop();
+
+#else
+  // ESP8266
+  String proxyUrl = "http://194.58.103.72/http2https.php?https://yandex.com/time/sync.json?geo=" + yandexGeoId + "&lang=ru";
+  WiFiClient client;
+  client.connect("194.58.103.72", 80);
+  if (!client.connected()) {
+    LOG.println(F("Не удалось подключиться к прокси"));
+    return false;
+  }
+
+  client.print(String("GET ") + proxyUrl + " HTTP/1.1\r\n" + "Host: 194.58.103.72\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
+
+  String line;
+  String payload = "";
+  bool headersEnded = false;
+  while (client.connected()) {
+    line = client.readStringUntil('\n');
+    if (!headersEnded) {
+      if (line == "\r") headersEnded = true;
+    } else {
+      payload += line;
+    }
+  }
+  client.stop();
+#endif
+
+  #if defined(ESP32_USED)
+  DynamicJsonDocument doc(4096);   // ESP32 OK
+#else
+  DynamicJsonDocument doc(2048);   // ESP8266
+#endif
+
+DeserializationError err = deserializeJson(doc, payload);
+if (!err) {
+  JsonObject clock = doc["clocks"][yandexGeoId];
+  if (clock.containsKey("weather")) {
+    currentTemp = clock["weather"]["temp"].as<float>();
+    currentCondition = clock["weather"]["condition"] | "";
+    return true;
+  }
+}
+return false;
+}
+
+// Openweather
+bool getWeatherFromOpenWeather() {
+  String url = "https://api.openweathermap.org/data/2.5/weather?q=" + weatherCity + "&appid=" + weatherApiKey + "&units=metric&lang=ru";
+
+#if defined(ESP32_USED)
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.connect("api.openweathermap.org", 443);
+  if (!client.connected()) {
+    LOG.println(F("Не удалось подключиться к OpenWeather"));
+    return false;
+  }
+
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.openweathermap.org\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
+
+  String line;
+  String payload = "";
+  bool headersEnded = false;
+  while (client.connected()) {
+    line = client.readStringUntil('\n');
+    if (!headersEnded) {
+      if (line == "\r") headersEnded = true;
+    } else {
+      payload += line;
+    }
+  }
+  client.stop();
+
+#else
+  // ESP8266
+  BearSSL::WiFiClientSecure client;
+  client.setInsecure();
+  client.connect("api.openweathermap.org", 443);
+  if (!client.connected()) {
+    LOG.println(F("Не удалось подключиться к OpenWeather"));
+    return false;
+  }
+
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.openweathermap.org\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
+
+  String line;
+  String payload = "";
+  bool headersEnded = false;
+  while (client.connected()) {
+    line = client.readStringUntil('\n');
+    if (!headersEnded) {
+      if (line == "\r") headersEnded = true;
+    } else {
+      payload += line;
+    }
+  }
+  client.stop();
+#endif
+
+  #if defined(ESP32_USED)
+  DynamicJsonDocument doc(2048);
+#else
+  DynamicJsonDocument doc(1536);   // ESP8266
+#endif
+
+DeserializationError err = deserializeJson(doc, payload);
+if (!err && doc["main"]["temp"]) {
+  currentTemp = doc["main"]["temp"].as<float>();
+  currentCondition = doc["weather"][0]["description"] | "";
+  return true;
+}
+return false;
+}
+#endif // USE_WEATHER == 1

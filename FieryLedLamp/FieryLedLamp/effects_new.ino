@@ -258,7 +258,7 @@ void readBinFile(String fileName, size_t len ) {
     amount = binFile.read(buffer, size);
   }
 
-#ifdef GENERAL_DEBUG
+#if GENERAL_DEBUG
   LOG.printf_P(PSTR("File size • %08d bytes\n"), amount);
 #endif
 
@@ -2944,7 +2944,7 @@ void PlanetEarth() {
     imgW = getSizeValue(binImage, 8 );
     imgH = getSizeValue(binImage, 10 );
 
-#ifdef GENERAL_DEBUG
+#if GENERAL_DEBUG
     LOG.printf_P(PSTR("Image • %03d x %02d px\n"), imgW, imgH);
 #endif
     scrollImage(imgW, imgH, 0U);

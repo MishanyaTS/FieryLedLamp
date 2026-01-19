@@ -4,15 +4,7 @@ void SSDP_init(void) {
   HTTP.on(F("/description.xml"), HTTP_GET, []() {
     SSDP.schema(HTTP.client());
   });
-  // --------------------Получаем SSDP со страницы
-  //HTTP.on("/ssdp", HTTP_GET, []() {
-    //String ssdp = HTTP.arg("ssdp");
- // configSetup=jsonWrite(configJson, "SSDP", ssdp);
-  //jsonWrite(configSetup, "SSDP", HTTP.arg("ssdp"));
-  //saveConfig();                 // Функция сохранения данных во Flash
-  //HTTP.send(200, F("text/plain"), "OK"); // отправляем ответ о выполнении
-  //});
-  //Если версия  2.0.0 закаментируйте следующую строчку
+
   LAMP_NAME = jsonRead(configSetup, "SSDP");
   SSDP.setName(jsonRead(configSetup, "SSDP"));
   SSDP.setDeviceType(F("upnp:rootdevice"));
@@ -26,7 +18,7 @@ void SSDP_init(void) {
   #endif
   SSDP.setURL("/");
   SSDP.setModelName(F("FieryLedLamp"));
-  SSDP.setModelNumber(jsonRead(configSetup, "SSDP") + FLL_VERSION);  
+  SSDP.setModelNumber(jsonRead(configSetup, "SSDP") + VERSION);  
   SSDP.setModelURL(F("https://github.com/MishanyaTS/FieryLedLamp"));
   SSDP.setManufacturer(F("MishanyaTS"));
   SSDP.setManufacturerURL(F("https://github.com/MishanyaTS/FieryLedLamp"));

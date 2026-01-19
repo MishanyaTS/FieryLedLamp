@@ -115,26 +115,26 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
     digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
     #endif
     
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     if (mp3_player_connect == 4){
         first_entry = 1;
         advert_hour = true;
     }
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 
     while (!fillString(stringTime, letterColor, false)) {
         parseUDP();
         delay (1);
-        #ifdef MP3_PLAYER_USE
+        #if USE_MP3_PLAYER
         if (day_night) {
            if ((day_advert_sound_on && mp3_player_connect == 4 && !dawnFlag && !sunsetFlag) || advert_flag) play_time_ADVERT();
         }
         else {
            if ((night_advert_sound_on && mp3_player_connect == 4 && !dawnFlag && !sunsetFlag) || advert_flag) play_time_ADVERT();
         }
-        #endif  // MP3_PLAYER_USE
+        #endif  // USE_MP3_PLAYER
         HTTP.handleClient();
-        #ifdef ESP_USE_BUTTON
+        #if USE_BUTTON
           buttonTick();
         #endif
         #ifdef ESP32_USED
@@ -144,7 +144,7 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
         #endif
     }
     
-    #ifdef MP3_PLAYER_USE
+    #if USE_MP3_PLAYER
     while (advert_flag) {
         play_time_ADVERT();
         #ifdef ESP32_USED
@@ -154,7 +154,7 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
         #endif
     }
     //first_entry = 0;
-    #endif  // MP3_PLAYER_USE
+    #endif  // USE_MP3_PLAYER
 
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)        // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
     digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);

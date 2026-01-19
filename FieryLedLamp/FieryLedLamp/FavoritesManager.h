@@ -118,17 +118,17 @@ class FavoritesManager
       if (millis() >= nextModeAt)
       {
         *currentMode = getNextFavoriteMode(currentMode);
-        #ifdef USE_MULTIPLE_LAMPS_CONTROL
+        #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
         #endif //USE_MULTIPLE_LAMPS_CONTROL
         *loadingFlag = true;
         nextModeAt = getNextTime();
           if (*random_on) *selectedSettings = 1U;
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Переключение на следующий выбранный режим: %d\n\n"), (*currentMode));
         #endif
         
-        #if (USE_MQTT)
+        #if USE_MQTT
         if (EspMode == 1U)
         {
           MqttManager::needToPublish = true;

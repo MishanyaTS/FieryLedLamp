@@ -1,50 +1,3 @@
-// Инициализация FFS
-void FS_init(void) {  
-  LittleFS.begin();
-  #ifdef ESP32_USED
-  {
-    File root = LittleFS.open("/");
-    File file = root.openNextFile();
-    while (file) {
-      //Serial.print("FILE: ");
-      //Serial.println(file.name());
-      String fileName = file.name();
-      //size_t fileSize = file.size();
-      file = root.openNextFile();
-    }
-  }
-  #else
-  {
-    Dir dir = LittleFS.openDir("/");
-    while (dir.next()) {
-      String fileName = dir.fileName();
-      //size_t fileSize = dir.fileSize();
-    }
-  }
-  #endif
-  //HTTP страницы для работы с FFS
-  //list directory
-  HTTP.on("/list", HTTP_GET, handleFileList);
-  //загрузка редактора editor
-  HTTP.on("/edit", HTTP_GET, []() {
-    if (!handleFileRead("/edit.htm")) HTTP.send(404, F("text/plain"), F("FileNotFound"));
-  });
-  //Создание файла
-  HTTP.on("/edit", HTTP_PUT, handleFileCreate);
-  //Удаление файла
-  HTTP.on("/edit", HTTP_DELETE, handleFileDelete);
-  //first callback is called after the request has ended with all parsed arguments
-  //second callback handles file uploads at that location
-  HTTP.on("/edit", HTTP_POST, []() {
-    HTTP.send(200, F("text/plain"), "");
-  }, handleFileUpload);
-  //called when the url is not defined here
-  //use it to load content from LittleFS
-  HTTP.onNotFound([]() {
-    if (!handleFileRead(HTTP.uri()))
-      HTTP.send(404, F("text/plain"), F("FileNotFound"));
-  });
-}
 // Здесь функции для работы с файловой системой
 String getContentType(String filename) {
   if (HTTP.hasArg("download")) return F("application/octet-stream");
@@ -82,18 +35,31 @@ bool handleFileRead(String path) {
 void handleFileUpload() {
   if (HTTP.uri() != "/edit") return;
   HTTPUpload& upload = HTTP.upload();
+
   if (upload.status == UPLOAD_FILE_START) {
     String filename = upload.filename;
     if (!filename.startsWith("/")) filename = "/" + filename;
+    LOG.printf("Upload Start: %s\n", filename.c_str());
     fsUploadFile = LittleFS.open(filename, "w");
+    if (!fsUploadFile) {
+      LOG.println("Failed to open file for writing");
+    }
     filename = String();
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    //DBG_OUTPUT_PORT.print("handleFileUpload Data: "); DBG_OUTPUT_PORT.println(upload.currentSize);
-    if (fsUploadFile)
+  } 
+  else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (fsUploadFile) {
       fsUploadFile.write(upload.buf, upload.currentSize);
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (fsUploadFile)
+    }
+  } 
+  else if (upload.status == UPLOAD_FILE_END) {
+    if (fsUploadFile) {
       fsUploadFile.close();
+      LOG.printf("Upload End: %s (%u bytes)\n", upload.filename.c_str(), upload.totalSize);
+    } else {
+      LOG.println("Upload failed - no file open");
+    }
+
+    HTTP.send(200, "text/plain", "OK");
   }
 }
 
@@ -160,6 +126,7 @@ void handleFileList() {
   HTTP.send(200, F("text/json"), output);
 }
 #else
+
 void handleFileList() {
   if (!HTTP.hasArg("dir")) {
     HTTP.send(500, F("text/plain"), F("BAD ARGS"));

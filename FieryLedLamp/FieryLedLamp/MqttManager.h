@@ -1,4 +1,4 @@
-#ifdef USE_MQTT
+#if USE_MQTT
 /*
  * Библиотека асинхронных MQTT запросов https://github.com/marvinroger/async-mqtt-client
  * Не умеет автоматически восстанавливать разорванное соединение с MQTT брокером, поэтому требует периодической проверки подключения
@@ -111,6 +111,14 @@ class MqttManager
     static char mqttBuffer[255U];
     static char* clientId;
 
+    static AsyncMqttClient* getMqttClient() {
+        return mqttClient;
+    }
+
+    static bool isConnected() {
+        return (mqttClient != nullptr) && mqttClient->connected();
+    }
+
   private:
     static char* topicInput;                                                    // TopicBase + '/' + MqttClientIdPrefix + ESP.getChipId + '/' + TopicCmnd
     #ifdef PUBLISH_STATE_IN_OLD_FORMAT
@@ -171,7 +179,7 @@ void MqttManager::setupMqtt(AsyncMqttClient* mqttClient, char* lampInputBuffer, 
   topicOutputJSON = (char*)malloc(topicLength);
   sprintf_P(topicOutputJSON, PSTR("%s/%s/%s"), TopicBase, clientId, TopicSnd);    // topicOutputJSON = TopicBase + '/' + MqttClientIdPrefix + ESP.getChipId + '/' + TopicSnd
 
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.printf_P(PSTR("MQTT топик для входящих команд: %s\n"), topicInput);
   #ifdef PUBLISH_STATE_IN_OLD_FORMAT
   LOG.printf_P(PSTR("MQTT топик для выходных ответов лампы: %s\n"), topicOutput);
@@ -188,7 +196,7 @@ void MqttManager::mqttConnect()
 {
   if ((!mqttLastConnectingAttempt) || (millis() - mqttLastConnectingAttempt >= connectionTimeout))
   {
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("Подключение к MQTT брокеру \""));
     if(mqttIPaddr)
         LOG.print(MqttServer);
@@ -208,7 +216,7 @@ bool MqttManager::publish(const char *topic, const char *value)
 {
   if (mqttClient->connected())
   {
-    #ifdef GENERAL_DEBUG
+    #if GENERAL_DEBUG
     LOG.print(F("Отправлено MQTT: топик \""));
     LOG.print(topic);
     LOG.print(F("\", значение \""));
@@ -225,7 +233,7 @@ bool MqttManager::publish(const char *topic, const char *value)
 
 void MqttManager::onMqttConnect(bool sessionPresent)
 {
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.println(F("Подключен к MQTT брокеру"));
   #endif
   mqttLastConnectingAttempt = 0;
@@ -237,7 +245,7 @@ void MqttManager::onMqttConnect(bool sessionPresent)
 
 void MqttManager::onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
 {
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.println(F("Отключен от брокера MQTT"));
   #endif
 }
@@ -251,7 +259,7 @@ void MqttManager::onMqttMessage(char* topic, char* payload, AsyncMqttClientMessa
     needToPublish = true;
   }
 
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.print(F("Получен MQTT:"));
   LOG.print(F(" топик \""));
   LOG.print(topic);

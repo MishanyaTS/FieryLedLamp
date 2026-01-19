@@ -2,8 +2,8 @@
 Все настройки по умолчанию в соответствии со схемой и файлом constant.h.
 
 ВНИМАНИЕ! Бинарники сделаны под конфигурацию 
-Flash Size: "4MB (32Mb)"
-Partition Scheme: "4MB with spiffs (1.43MB APP/1.1MB SPIFFS)"
+Flash Size: "16MB (128MB)"
+Partition Scheme: "16MB with spiffs (6.25MB APP/3.43MB SPIFFS)"
 
 Обновляйте сначала Firmware, а затем FileSystem.
 

@@ -1,57 +1,37 @@
-// Текущая версия : FieryLedLamp v5.4 132 эффекта
-// ВНИМАНИЕ!!! Большая часть настроек перенесена в файл data/config и может изменяться в процессе эксплуатации лампы.
-// Внимательно читайте файл ПРОЧТИ МЕНЯ!!!.txt и ПРОЧТИ МЕНЯ.doc (тут с картинками)
-
 #pragma once
 
-#define FLL_VERSION           (" Ver.5.4.132")
+#define VERSION      " v6.0"
+#define CUR_VERSION  "FieryLedLamp v6.0"
 
+// =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
+#define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
+//#define USE_BLYNK   ("token")                             // Раскомментируйте эту строку и вставьте токен из приложения Blynk https://community.alexgyver.ru/threads/nastrojka-programmy-blynk-dlja-fiery-led-lamp.7787/
 
-// ==========  ВНЕШНЕЕ УПРАВЛЕНИЕ  ===============
-#define USE_MQTT                    (true)                  // true – используется mqtt клиент, false – нет
-#if USE_MQTT
-#define MQTT_RECONNECT_TIME   (10U)                         // Время в секундах перед подключением к брокеру MQTT в случае потери подключения
-#endif
-//#define USE_BLYNK  ("сюда_вставить_токен_из_приложения")  // раскомментируйте эту строку, если вы используете приложение Blynk (для iOS и Android) https://community.alexgyver.ru/threads/nastrojka-programmy-blynk-dlja-fiery-led-lamp.7787/
+// =============  МОДУЛИ  ========================================================================
+#define USE_BUTTON 1                                        // Использовать кнопку: 0 - нет, 1 - да
+#define BUTTON_IS_SENSORY 1                                 // Тип кнопки: 0 - механическая, 1 - сенсорная
+#define USE_TM1637 1                                        // Использовать дисплей TM1637: 0 - нет, 1 - да
+#define USE_IR_RECEIVER 1                                   // Использовать ИК-приёмник: 0 - нет, 1 - да
+#define USE_MP3_PLAYER 1                                    // Использовать MP3-плеер: 0 - нет, 1 - да
+#define USE_RTC 0                                           // Использовать модуль RTC (DS3231): 0 - нет, 1 - да
 
-// =======  МОДУЛИ, ИСПОЛЬЗУЕМЫЕ  ==========
-#define ESP_USE_BUTTON                                      // Закомментировать, если кнопка не используется ((иначе лампа может регистрировать "фантомные" нажатия и некорректно устанавливать яркость)отключается на web странице)
-#define TM1637_USE                                          // Закомментировать, если не используется дисплей TM1637
-#define MP3_PLAYER_USE                                      // Закомментировать, если не используется плеер
-#define IR_RECEIVER_USE                                     // Закомментировать, если не используется ИК ДУ
-//#define USE_RTC                                           // Закомментировать, если не используется RTC модуль
-#ifdef USE_RTC
-#define RTC_3231                                            
+// ===============================================================================================
+#define USE_WEATHER 1                                       // Использовать получение погоды: 0 - нет, 1 - да 
+#define USE_MULTIPLE_LAMPS_CONTROL 1                        // Использовать управление несколькими лампами: 0 - нет, 1 - да
+#define USE_OTA 1                                           // Использовать обновление прошивки по воздуху: 0 - нет, 1 - да
+#define GENERAL_DEBUG 0                                     // Включить отладочные сообщения: 0 - нет, 1 - да
+#define HEAP_SIZE_PRINT 0                                   // Вывод размера свободного ОЗУ: 0 - откл, 1 - вкл
 
-#endif
-#ifdef TM1637_USE
-  #define RTC_ATTACHED_TO_TM                                // для экономии пинов, DS3231 подключается параллельно TM1637
-#endif
-
-// =============  НАСТРОЙКА  ====================
-#define USE_DEFAULT_SETTINGS_RESET                          // Закомментируйте эту строку, если не требуется, чтобы при загрузке списка эффектов с лампы настройки эффектов смахивали на значение по умолчанию
-
-#define USE_MULTIPLE_LAMPS_CONTROL                          // Добавить код для управления несколькими лампами
-
-//#define MP3_DEBUG                                         // если строка не закомментирована, выводятся отладочные сообщения mp3 player
-//#define HEAP_SIZE_PRINT                                   // если строка не закомментирована, будет выводиться размер "купи" (свободного ОЗУ)
-//#define GENERAL_DEBUG                                     // если строка не закомментирована, будут выводиться общие отладочные сообщения
-#ifdef GENERAL_DEBUG
- //#define MAIN_CYCLES_PER_SECOND                           // Выводит количество главных циклов в секунду. Приблизительно то же, что и FPS. Будет выводиться только вместе с GENERAL_DEBUG
-#endif
-
-#define USE_LittleFS                                        // Закомментируйте эту строку, если вместо файловой системы LittlFS хотите использовать файловую систему SPIFFS (устаревшая)
-
-// --- НАСТРОЙКА МР3 ПЛЕЕРА -------------
-#ifdef MP3_PLAYER_USE
+// =============  НАСТРОЙКА МР3 ПЛЕЕРА  ==========================================================
+#if USE_MP3_PLAYER
   //#define CHECK_MP3_CONNECTION                            // Закомментируйте эту строку, если нужно, чтобы лампа не проверяла наличие связи с MP3 плеером.
   //#define DF_PLAYER_IS_ORIGINAL                           // Если используется проигрыватель с чипом, отличным от AS20HGN402, закомментируйте эту строку
-  #ifndef  DF_PLAYER_IS_ORIGINAL
-    //#define DF_PLAYER_GD3200x                             // Если у вас такой чип в плеере и эта строка не закомментирована, то для озвучивания времени используются разные голоса.
-  #endif  //DF_PLAYER_IS_ORIGINAL
-#endif  //MP3_PLAYER_USE
-
-// --- НАСТРОЙКА КНОПКИ -----------------
+#ifndef  DF_PLAYER_IS_ORIGINAL
+  //#define DF_PLAYER_GD3200x                               // Если у вас такой чип в плеере и эта строка не закомментирована, то для озвучивания времени используются разные голоса.
+#endif
+#endif
+//#define MP3_DEBUG                                         // если строка не закомментирована, выводятся отладочные сообщения mp3 player
+// =============  НАСТРОЙКА КНОПКИ  ==============================================================
 #define BUTTON_CAN_SET_SLEEP_TIMER                          // с этой строчкой, если на лампе набить кнопкой 4х кратно (один раз), лампа мигнёт дважды синим и если она выключена , то включится.
                                                             // Таймер выключения лампы будет установлен на BUTTON_SET_SLEEP_TIMER1 минут. Если на лампе набить кнопкой 3х кратно + удержание 4го нажатия, лампа мигнёт синим трижды и если она выключена , то включится.
                                                             // Таймер выключения лампы будет установлен на BUTTON_SET_SLEEP_TIMER2 минут. Чтобы убрать эту функцию, удалите или закомментируйте эту строчку
@@ -59,14 +39,11 @@
   #define BUTTON_SET_SLEEP_TIMER1   (5UL)                   
   #define BUTTON_SET_SLEEP_TIMER2   (10UL)
 #endif
-#define BUTTON_IS_SENSORY     (1)                           // Если у вас не сенсорная, а простая кнопка, поменяйте в этой строке 1 на 0
-#define BUTTON_LOCK_ON_START                                // с этой строкой, если в момент включения лампы в розетку успеть нажать кнопку или если вы забудете кнопку подключить, лампа отключит реакцию нажатия кнопки до следующего раза
-#ifdef ESP_USE_BUTTON
+#define BUTTON_LOCK_ON_START 1                              // с этой строкой, если в момент включения лампы в розетку успеть нажать кнопку или если вы забудете кнопку подключить, лампа отключит реакцию нажатия кнопки до следующего раза
+#if USE_BUTTON
 #define DISPLAY_IP_AT_START                                 // Закомментируйте эту строку, если хотите, чтобы при включении питания и подключении к WiFi лампа один раз выводила свой IP адрес (для ламп с кнопкой)
-#else
-#define DISPLAY_IP_AT_START                                 // Закомментируйте эту строку, если не хотите, чтобы при включении питания и подключении к WiFi лампа один раз выводила свой IP адрес (для ламп без кнопки)
-#endif  //ESP_USE_BUTTON
-#if defined (ESP_USE_BUTTON)
+#endif
+#if defined (USE_BUTTON)
 #define BUTTON_STEP_TIMEOUT   (100U)                        // каждые BUTTON_STEP_TIMEOUT мс будет генерироваться событие удерживания кнопки (для регулировки яркости)
 #define BUTTON_CLICK_TIMEOUT  (500U)                        // максимальное время между нажатиями кнопки в мс, до достижения которого считается серия последовательных нажатий
 #if (BUTTON_IS_SENSORY == 1)
@@ -76,7 +53,7 @@
 #endif
 #endif
 
-// --- ВРЕМЯ ---------------------------
+// =============  ВРЕМЯ  =========================================================================
 #define GET_TIME_FROM_PHONE (5U)                            // с этой строчкой время в лампе само синхронизируется с приложением, когда лампа не имеет или потеряла доступ в интернет на сервер точного времени .
                                                             // для этого нужно использовать приложение FireLamp версии 3.0 или выше, либо другое приложение, которое отправляет время телефона в лампу. 
                                                             // цифра 5U означает, что синхранизация не чаще, чем раз в 5 минут. переход на зимнее время произойдёт только если изменение пришло со смартфона!
@@ -90,93 +67,106 @@
                                                             // Там же чекбоксом выбирается необходимость перехода на летнее время.
 #define NTP_INTERVAL          (59 * 60UL * 1000UL)          // интервал синхронизации времени (59 минут)
                                                             // константы DAY_HOURS_BRIGHTNESS и NIGHT_HOURS_BRIGHTNESS используются только, когда матрица выключена, иначе будет использована яркость текущего эффекта
-// --- Яркость вспышки ПРЕДУПРЕЖДЕНИЕ showWarning ---
+// =============  Яркость вспышки ПРЕДУПРЕЖДЕНИЕ showWarning  ====================================
 #define WARNING_BRI_DAY    (10U)                            // Яркость вспышки предупреждение днем
 #define WARNING_BRI_NIGHT    (5U)                           // Яркость вспышки предупреждения ночью
 
-// --- МАТРИЦА -------------------------
+// =============  МАТРИЦА  =======================================================================
 #define CURRENT_LIMIT         (4000U)                       // Лимит потребления матрицы по току в миллиамперах, автоматически управляет яркостью (пожалей свой блок питания!) 0 – выключить лимит
-
 #define WIDTH                 (16)                          // ширина матрицы
 #define HEIGHT                (16)                          // высота матрицы
-
 #define COLOR_ORDER           (GRB)                         // порядок цветов на ленте. Если цвет отображается некорректно - меняйте. Начать можно с RGB
 
-// --- РАЗНОЕ -----------------------------
+// =============  РАЗНОЕ  ========================================================================
 #define ESP_CONF_TIMEOUT        (60U)                       // Время в секундах, которое лампа будет ждать от вас ввода пароля для ОТА обновления (пароль совпадает с паролем точки доступа)
 #define INTERNET_CHECK_PERIOD   (60UL)                      // Период повторной проверки наличия интернета в секундах
+#define USE_DEFAULT_SETTINGS_RESET 1                        // Сброс настроек эффектов: 0 - откл, 1 - вкл
+#if USE_MQTT
+#define MQTT_RECONNECT_TIME   (10U)                         // Время в секундах перед подключением к брокеру MQTT в случае потери подключения
+#endif
+#if USE_RTC
+#define RTC_3231                                            
+#endif
+#if USE_TM1637
+  #define RTC_ATTACHED_TO_TM                                // для экономии пинов, DS3231 подключается параллельно TM1637
+#endif
+#define USE_LittleFS                                        // Закомментируйте, если используете SPIFFS
 
-
-// ========  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ  ==================================================
-
-// --- ESP_PIN_OUT ESP32 ---  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ ESP32 (ESP8266 смотри ниже) -----
+// =============  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ  ===================================================
 #ifdef ESP32_USED
+// --------------------------------------------------------------------------------------------------------------------------------------------
+#ifdef ESP32_S3_USED
+// --- ESP_PIN_OUT ESP32-S3 ---
+#define LED_PIN               (14U)                         // Пин ленты
+#define BTN_PIN               (7U)                          // Пин кнопки
+#define I2C_SDA               (8U)                          // DS3231 SDA pin
+#define I2C_SCL               (9U)                          // DS3231 SCL pin
+#define MOSFET_PIN            (6U)                          // Пин MOSFET транзистора - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
+#define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
+#if USE_TM1637
+#define DIO                   (18U)                         // TM1637 display DIO pin
+#define CLK                   (21U)                         // TM1637 display CLK pin
+#endif
+#if USE_MP3_PLAYER
+#define MP3_TX_PIN            (17U)                         // Определяет пин TX (RX на плеере) последовательного порта
+#define MP3_RX_PIN            (16U)                         // Определяет пин RX (TX на плеере) последовательного порта
+#endif
+#if USE_IR_RECEIVER
+#define IR_RECEIVER_PIN       (15U)                         // Пин ИК сенсора
+#endif
+
+#else
+// --- ESP_PIN_OUT ESP32 ---
 #define LED_PIN               (32U)                         // Пин ленты
 #define BTN_PIN               (35U)                         // Пин кнопки
-
 #define I2C_SDA               (21U)                         // DS3231 SDA pin
 #define I2C_SCL               (22U)                         // DS3231 SCL pin
-
 #define MOSFET_PIN            (33U)                         // Пин MOSFET транзистора - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
-#define MOSFET_LEVEL          (HIGH)                        // логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
-//#define ALARM_PIN             (39U)                       // пен состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
-//#define ALARM_LEVEL           (HIGH)                      // логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
-
-#ifdef TM1637_USE
-#define DIO                   (13U)                         // TM1637 display DIO pin
-#define CLK                   (27U)                         // TM1637 display CLK pin
-#endif  //TM1637_USE
-
-#ifdef MP3_PLAYER_USE
- #define MP3_TX_PIN            (25U)                        // Определяет пин TX (RX на плеере) последовательного порта
- #define MP3_RX_PIN            (26U)                        // Определяет пин RX (TX на плеере) последовательного порта
- #endif //MP3_PLAYER_USE
- 
-#ifdef IR_RECEIVER_USE
+#define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
+//#define ALARM_PIN           (39U)                         // Пин состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
+//#define ALARM_LEVEL         (HIGH)                        // Логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
+#if USE_TM1637
+  #define DIO                 (13U)                         // TM1637 display DIO pin
+  #define CLK                 (27U)                         // TM1637 display CLK pin
+#endif
+#if USE_MP3_PLAYER
+  #define MP3_TX_PIN          (25U)                         // Определяет пин TX (RX на плеере) последовательного порта
+  #define MP3_RX_PIN          (26U)                         // Определяет пин RX (TX на плеере) последовательного порта
+#endif
+#if USE_IR_RECEIVER
   #define IR_RECEIVER_PIN     (34U)                         // Пин ИК сенсора
-#endif  //IR_RECEIVER_USE
+#endif
+#endif
 
 #else
-// --- ESP_PIN_OUT ESP8266 ---  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ ESP8266 (ESP32 смотри выше) ---
-#define LED_PIN               (0U)                          // Пин ленты                (D3) 
-#define BTN_PIN               (4U)                          // Пин кнопки               (D2)
-
+// --- ESP_PIN_OUT ESP8266 ---
+#define LED_PIN               (0U)                          // Пин ленты              (D3) 
+#define BTN_PIN               (4U)                          // Пин кнопки             (D2)
 #define MOSFET_PIN            (16U)                         // Пин MOSFET транзистора (D0) - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
-#define MOSFET_LEVEL          (HIGH)                        // логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
-//#define ALARM_PIN             (15U)                       // Пин состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
-//#define ALARM_LEVEL           (HIGH)                      // логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
-
-#ifdef TM1637_USE
-  #define DIO                   (14U)                       // TM1637 DIO на pin (D5)
-  #define CLK                   (5U)                        // TM1637 CLK на pin (D1)
-#endif  //TM1637_USE
-
+#define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
+//#define ALARM_PIN           (15U)                         // Пин состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
+//#define ALARM_LEVEL         (HIGH)                        // Логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
+#if USE_TM1637
+  #define DIO                 (14U)                         // TM1637 DIO на pin (D5)
+  #define CLK                 (5U)                          // TM1637 CLK на pin (D1)
+#endif
 #ifdef RTC_ATTACHED_TO_TM
-  #define I2C_SDA               (CLK)
-  #define I2C_SCL               (DIO)
+  #define I2C_SDA             (CLK)
+  #define I2C_SCL             (DIO)
 #else
-  #define I2C_SDA               (5U)                        // DS3231 SDA на GPIO5 (D1)
-  #define I2C_SCL               (14U)                       // DS3231 SCL на GPIO14 (D5)
+  #define I2C_SDA             (5U)                          // DS3231 SDA на GPIO5 (D1)
+  #define I2C_SCL             (14U)                         // DS3231 SCL на GPIO14 (D5)
+#endif
+#if USE_MP3_PLAYER
+ #define MP3_TX_PIN           (12U)                         // Определяет пин (D6) TX (RX на плеере) последовательного порта
+ #define MP3_RX_PIN           (13U)                         // Определяет пин (D7) RX (TX на плеере) последовательного порта
+#endif
+#if USE_IR_RECEIVER
+  #define IR_RECEIVER_PIN     (2U)                          // Пин ИК сенсора D4
+#endif
 #endif
 
-#ifdef MP3_PLAYER_USE
- #define MP3_TX_PIN            (12U)                        // Определяет пин (D6) TX (RX на плеере) последовательного порта
- #define MP3_RX_PIN            (13U)                        // Определяет пин (D7) RX (TX на плеере) последовательного порта
- #endif //MP3_PLAYER_USE
-
-#ifdef IR_RECEIVER_USE
-  #define IR_RECEIVER_PIN     (2U)                          //Пин ИК сенсора D4
-#endif  //IR_RECEIVER_USE
-#endif
-
-// ==================================================================================================
-//#define CONNECTION_ANGLE      (0U)                        // угол подключения: 0 - левый нижний, 1 - левый верхний, 2 - правый верхний, 3 - правый нижний
-//#define STRIP_DIRECTION       (0U)                        // направление ленты из угла: 0 - вправо, 1 - вверх, 2 - влево, 3 - вниз
-                                                            // при неправильной настройке матрицы вы получите предупреждение "Wrong matrix parameters! Set to default"
-// Не используется.                                         // шпаргалка по настройке матрицы здесь: https://alexgyver.ru/wp-content/uploads/2018/11/scheme3.jpg
-// Это настраивается в веб-интерфейсе.                      // (но в ней, кажется, перепутаны местами квадратики в 4м столбце, а может, и ещё какие-то)
-
-// =========  ЭФФЕКТЫ  =======================================================================
+// =============  ЭФФЕКТЫ  =======================================================================
 // == названия и номера эффектов ниже в списке используются на вкладке effectTricker ==
 // == если меняете, меняйте и там, и ещё здесь ниже в РЕЕСТРЕ ДОСТУПНЫХ ЭФФЕКТОВ ==
 
@@ -315,7 +305,7 @@
 
 #define MODE_AMOUNT         (132U)    // количество режимов
 
-// ============= МАССИВ НАСТРОЕК ЭФФЕКТОВ ПО УМОЛЧАНИЮ ===================
+// =============  МАССИВ НАСТРОЕК ЭФФЕКТОВ ПО УМОЛЧАНИЮ=============================================
 // формат записи:
 //{ Яркость, Скорость, Масштаб}
 
@@ -485,11 +475,11 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
 
 #define BRIGHTNESS            (40U)                         // стандартная маскимальная яркость (0-255). используется только в момент включения питания лампы
 
+// Порты
 #define ESP_HTTP_PORT         (80U)                         // номер порта, который будет использоваться во время первой утановки имени WiFi сети (и пароля), к которой потом будет подключаться лампа в режиме WiFi клиента (лучше не менять)
 #define ESP_UDP_PORT          (8888U)                       // номер порта, который будет "слушать" UDP сервер во время работы лампы как в режиме WiFi точки доступа, так и в режиме WiFi клиента (лучше не менять)
 #define WIFIMAN_DEBUG         (false)                       // вывод отладочных сообщений при подключении к WiFi сети: true - выводятся, false - не выводятся; настройка не зависит от GENERAL_DEBUG
-#define OTA                                                 // если строка не закомментирована, модуль будет ждать два последовательных запроса пользователя на прошивку по воздуху (два четрёхкратных нажатия на кнопку)
-#ifdef OTA
+#if USE_OTA
 #define ESP_OTA_PORT          (8266U)                       // номер порта, который будет "прослушиваться" в ожидании команды прошивки по воздуху
 #endif
 
@@ -524,20 +514,14 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 // дальше придётся переделывать типы (размеры) переменных в функциях FavoritesManager.h
 #define MAX_UDP_BUFFER_SIZE   (MODE_AMOUNT * 2 + 20)        // максимальный размер буффера UDP сервера
 
-#define GENERAL_DEBUG_TELNET  (false)                       // true - отладочные сообщения будут выводиться в telnet вместо Serial порта (для удалённой отладки без подключения usb кабелем)
-#define TELNET_PORT           (23U)                         // номер telnet порта
-
-#if defined(GENERAL_DEBUG) && GENERAL_DEBUG_TELNET
-WiFiServer telnetServer(TELNET_PORT);                       // telnet сервер
-WiFiClient telnet;                                          // обработчик событий telnet клиента
-bool telnetGreetingShown = false;                           // признак "показано приветствие в telnet"
-#define LOG                   telnet
+// LOG
+#if GENERAL_DEBUG
+  #define LOG Serial
 #else
-#define LOG                   Serial
+  #define LOG if(0) Serial
 #endif
 
 //================ Дальше только для разработчиков. Не меняйте здесь ничего, если не уверены в результате!!! ===================
-
 //#include <EEPROM.h>
 //#include "Types.h"
 #define EEPROM_PASSWORD_START_ADDRESS           (0U)            // начальный адрес в EEPROM памяти для записи пароля к роутеру
@@ -551,8 +535,7 @@ bool telnetGreetingShown = false;                           // признак "�
 
 //+++++Функции для работы с json файлами+++++++++++++++++++++++++++
 
-#include <ArduinoJson.h>        //Установить из менеджера библиотек версию 5.13.5 !!!. https://arduinojson.org/
-
+#include <ArduinoJson.h>
 
 #ifdef ESP32_USED
  #ifndef CORE_2_0_X
@@ -591,6 +574,7 @@ uint32_t AUTOMATIC_OFF_TIME = (0UL);                        // Автовыкл�
 char NTP_ADDRESS [32];                                      // Массив для адреси сервера NTP
 
 String configSetup = "{}";                                  // Конфиг лампы
+bool inClockWeatherMode = false;
 
 // --- ВЫВОД ВРЕМЕНИ БЕГУЩЕЙ СТРОКОЙ ---
 unsigned int NIGHT_HOURS_START;                             // Начало ночного времени
@@ -599,12 +583,11 @@ unsigned int DAY_HOURS_BRIGHTNESS;                          // Начало дн
 unsigned int NIGHT_HOURS_BRIGHTNESS;                        // Завершение дневного времени
 
 // Функции JSON (ArduinoJSON Version 6.19.4)
-
 // ------------- Чтение значения json String
 String jsonRead(String &json, String name) {
   DynamicJsonDocument doc(3072);
   DeserializationError error = deserializeJson(doc, json);
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   if (error) {
     LOG.print(F("deserializeJson() failed: "));
     LOG.println(error.f_str());
@@ -619,7 +602,7 @@ String jsonRead(String &json, String name) {
 int jsonReadtoInt(String &json, String name) {
   DynamicJsonDocument doc(3072);
   DeserializationError error = deserializeJson(doc, json);
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   if (error) {
     LOG.print(F("deserializeJson() failed: "));
     LOG.println(error.f_str());
@@ -633,7 +616,7 @@ int jsonReadtoInt(String &json, String name) {
 void jsonWrite(String &json, String name, String volume) {
   DynamicJsonDocument doc(3072);
   DeserializationError error = deserializeJson(doc, json);
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   if (error) {
     LOG.print(F("deserializeJson() failed: "));
     LOG.println(error.f_str());
@@ -650,7 +633,7 @@ void jsonWrite(String &json, String name, String volume) {
 void jsonWrite(String &json, String name, int volume) {
   DynamicJsonDocument doc(3072);
   DeserializationError error = deserializeJson(doc, json);
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   if (error) {
     LOG.print(F("deserializeJson() failed: "));
     LOG.println(error.f_str());
@@ -663,7 +646,6 @@ void jsonWrite(String &json, String name, int volume) {
   //return json;
 }
 
-
 // ------------- Запись строки в файл
 String writeFile(const String& fileName, String& strings ) {
   File configFile = LittleFS.open("/" + fileName, "w");
@@ -673,13 +655,18 @@ String writeFile(const String& fileName, String& strings ) {
   configFile.print(strings);
   //strings.printTo(configFile);
   configFile.close();
-  #ifdef GENERAL_DEBUG
+  #if GENERAL_DEBUG
   LOG.print (F("\nСохранён файл "));
   LOG.println (fileName);
   #endif  //GENERAL_DEBUG
   return "Write sucsses";
 }
 void saveConfig (){
+  #if !USE_RTC
+        jsonWrite(configSetup, "rtc_status", "📴 Отключен");
+        jsonWrite(configSetup, "rtc_valid", "0");
+        jsonWrite(configSetup, "rtc_time", "--:--:-- --.--.----");
+    #endif
   writeFile(F("config.json"), configSetup );
 }
 // ------------- Чтение файла в строку
@@ -698,12 +685,11 @@ String readFile(const String& fileName, size_t len ) {
   return temp;
 }
 
-
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 void setModeSettings(uint8_t Scale = 0U, uint8_t Speed = 0U);
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
-#ifdef USE_MULTIPLE_LAMPS_CONTROL
+#if USE_MULTIPLE_LAMPS_CONTROL
 void multiple_lamp_control ();
 bool repeat_multiple_lamp_control = false;
 #endif  //USE_MULTIPLE_LAMPS_CONTROL

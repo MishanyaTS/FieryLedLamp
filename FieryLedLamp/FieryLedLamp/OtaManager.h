@@ -11,7 +11,7 @@
  * Для включения опции обновления по воздуху в основном файле должен быть определён идентификатор OTA "#define OTA" и режим "#define ESP_MODE (1U)" (а также в данном проекте должна быть подключена кнопка).
 */
 
-#ifdef OTA
+#if USE_OTA
 
 #include <ArduinoOTA.h>
 #ifdef ESP32_USED
@@ -46,7 +46,7 @@ class OtaManager
     {
 /*      if (espMode != 1U) интересно, зачем было запрещать обновление через точку доступа?!
       {
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Запрос обновления по воздуху поддерживается только в режиме ESP_MODE = 1\n"));
         #endif
 
@@ -59,7 +59,7 @@ class OtaManager
         OtaFlag = OtaPhase::GotFirstConfirm;
         momentOfFirstConfirmation = millis();
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Получено первое подтверждение обновления по воздуху\nОжидание второго подтверждения\n"));
         #endif
 
@@ -71,7 +71,7 @@ class OtaManager
         OtaFlag = OtaPhase::GotSecondConfirm;
         momentOfOtaStart = millis();
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Получено второе подтверждение обновления по воздуху\nСтарт режима обновления\n"));
         #endif
 
@@ -91,7 +91,7 @@ class OtaManager
         OtaFlag = OtaPhase::None;
         momentOfFirstConfirmation = 0;
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Таймаут ожидания второго подтверждения превышен\nСброс флага в исходное состояние\n"));
         #endif
 
@@ -104,7 +104,7 @@ class OtaManager
         OtaFlag = OtaPhase::None;
         momentOfOtaStart = 0;
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Таймаут ожидания прошивки по воздуху превышен\nСброс флага в исходное состояние\nПерезагрузка\n"));
         delay(500);
         #endif
@@ -155,7 +155,7 @@ class OtaManager
 
         // NOTE: if updating LittleFS this would be the place to unmount LittleFS using LittleFS.end()
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Start updating %s\n"), type);
         #endif
       });
@@ -166,7 +166,7 @@ class OtaManager
         momentOfFirstConfirmation = 0;
         momentOfOtaStart = 0;
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Обновление по воздуху выполнено\nПерезапуск"));
         delay(500);
         #endif
@@ -174,7 +174,7 @@ class OtaManager
 
       ArduinoOTA.onProgress([](unsigned int progress, unsigned int total)
       {
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Ход выполнения: %u%%\r"), (progress / (total / 100)));
         #endif
       });
@@ -185,42 +185,42 @@ class OtaManager
         momentOfFirstConfirmation = 0;
         momentOfOtaStart = 0;
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Обновление по воздуху завершилось ошибкой [%u]: "), error);
         #endif
 
         if (error == OTA_AUTH_ERROR)
         {
-          #ifdef GENERAL_DEBUG
+          #if GENERAL_DEBUG
           LOG.println(F("Auth Failed"));
           #endif
         }
         else if (error == OTA_BEGIN_ERROR)
         {
-          #ifdef GENERAL_DEBUG
+          #if GENERAL_DEBUG
           LOG.println(F("Begin Failed"));
           #endif
         }
         else if (error == OTA_CONNECT_ERROR)
         {
-          #ifdef GENERAL_DEBUG
+          #if GENERAL_DEBUG
           LOG.println(F("Connect Failed"));
           #endif
         }
         else if (error == OTA_RECEIVE_ERROR)
         {
-          #ifdef GENERAL_DEBUG
+          #if GENERAL_DEBUG
           LOG.println(F("Receive Failed"));
           #endif
         }
         else if (error == OTA_END_ERROR)
         {
-          #ifdef GENERAL_DEBUG
+          #if GENERAL_DEBUG
           LOG.println(F("End Failed"));
           #endif
         }
 
-        #ifdef GENERAL_DEBUG
+        #if GENERAL_DEBUG
         LOG.print(F("Сброс флага в исходное состояние\nПереход в режим ожидания запроса прошивки по воздуху\n"));
         #endif
       });
@@ -229,7 +229,7 @@ class OtaManager
       ArduinoOTA.begin();
       OtaFlag = OtaPhase::InProgress;
 
-      #ifdef GENERAL_DEBUG
+      #if GENERAL_DEBUG
       LOG.printf_P(PSTR("Для обновления в Arduino IDE выберите пункт меню Инструменты - Порт - '%s at "), espHostName);
       LOG.print(WiFi.localIP());
       LOG.println(F("'"));
