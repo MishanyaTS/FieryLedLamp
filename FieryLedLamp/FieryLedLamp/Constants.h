@@ -1,7 +1,7 @@
 #pragma once
 
-#define VERSION      " v6.0"
-#define CUR_VERSION  "FieryLedLamp v6.0"
+#define VERSION      " v6.1"
+#define CUR_VERSION  "FieryLedLamp v6.1"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -21,6 +21,7 @@
 #define USE_OTA 1                                           // Использовать обновление прошивки по воздуху: 0 - нет, 1 - да
 #define GENERAL_DEBUG 0                                     // Включить отладочные сообщения: 0 - нет, 1 - да
 #define HEAP_SIZE_PRINT 0                                   // Вывод размера свободного ОЗУ: 0 - откл, 1 - вкл
+#define DISPLAY_IP_AT_START 1                               // Показать бегущей строкой IP-адрес при старте: 0 - нет, 1 - да
 
 // =============  НАСТРОЙКА МР3 ПЛЕЕРА  ==========================================================
 #if USE_MP3_PLAYER
@@ -40,9 +41,7 @@
   #define BUTTON_SET_SLEEP_TIMER2   (10UL)
 #endif
 #define BUTTON_LOCK_ON_START 1                              // с этой строкой, если в момент включения лампы в розетку успеть нажать кнопку или если вы забудете кнопку подключить, лампа отключит реакцию нажатия кнопки до следующего раза
-#if USE_BUTTON
-#define DISPLAY_IP_AT_START                                 // Закомментируйте эту строку, если хотите, чтобы при включении питания и подключении к WiFi лампа один раз выводила свой IP адрес (для ламп с кнопкой)
-#endif
+
 #if defined (USE_BUTTON)
 #define BUTTON_STEP_TIMEOUT   (100U)                        // каждые BUTTON_STEP_TIMEOUT мс будет генерироваться событие удерживания кнопки (для регулировки яркости)
 #define BUTTON_CLICK_TIMEOUT  (500U)                        // максимальное время между нажатиями кнопки в мс, до достижения которого считается серия последовательных нажатий
@@ -520,7 +519,6 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 #else
   #define LOG if(0) Serial
 #endif
-
 //================ Дальше только для разработчиков. Не меняйте здесь ничего, если не уверены в результате!!! ===================
 //#include <EEPROM.h>
 //#include "Types.h"
@@ -662,11 +660,6 @@ String writeFile(const String& fileName, String& strings ) {
   return "Write sucsses";
 }
 void saveConfig (){
-  #if !USE_RTC
-        jsonWrite(configSetup, "rtc_status", "📴 Отключен");
-        jsonWrite(configSetup, "rtc_valid", "0");
-        jsonWrite(configSetup, "rtc_time", "--:--:-- --.--.----");
-    #endif
   writeFile(F("config.json"), configSetup );
 }
 // ------------- Чтение файла в строку

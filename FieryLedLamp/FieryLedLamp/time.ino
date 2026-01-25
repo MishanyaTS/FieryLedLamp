@@ -202,8 +202,6 @@ if (stillUseNTP)
 #if USE_TM1637
         //blink_clock = false;
 #endif
-        
-
         #if defined(ALARM_PIN) && defined(ALARM_LEVEL)                    // установка сигнала в пин, управляющий будильником
         digitalWrite(ALARM_PIN, !ALARM_LEVEL);
         #endif
@@ -258,6 +256,9 @@ if (stillUseNTP)
         //else blink_clock = false;
 #endif
 
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время работы будильника
+        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+        #endif
       }
       else
       {
@@ -280,6 +281,9 @@ if (stillUseNTP)
         //blink_clock = false;
 #endif
 
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время работы будильника
+        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+        #endif
       }
     jsonWrite(configSetup, "time", Get_Time(currentLocalTime));
     

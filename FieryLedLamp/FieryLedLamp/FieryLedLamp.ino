@@ -44,7 +44,8 @@
  #include "esp_wifi.h"                // Борьба с рестартом esp32 "assertion "Invalid mbox""
  #include "nvs_flash.h"               // Борьба с рестартом esp32 "assertion "Invalid mbox""
  #include <WiFi.h>
- #include <WiFiClient.h>
+ #include <WiFiMulti.h>
+ WiFiMulti wifiMulti;
  #include <WiFiAP.h>
  #include <WebServer.h>
  #include <WiFiClientSecure.h>
@@ -58,6 +59,8 @@
 #else
  #include <ESP8266SSDP.h>
  #include <ESP8266WiFi.h>
+ #include <ESP8266WiFiMulti.h>
+ ESP8266WiFiMulti wifiMulti;
  #include <ESP8266WebServer.h>
  #include <ElegantOTA.h>
  #define FASTLED_USE_PROGMEM 1        // просим библиотеку FASTLED экономить память контроллера на свои палитры
@@ -109,11 +112,6 @@
   #include <BlynkSimpleEsp8266.h>
  #endif
 #endif
-//#ifdef ESP32_USED
-// #include "esp_system.h"
-// #include "esp_int_wdt.h"
-// #include "esp_task_wdt.h"
-//#endif
 #if USE_TM1637
 #include "TM1637Display.h"
 #endif
@@ -186,9 +184,6 @@ OtaPhase OtaManager::OtaFlag = OtaPhase::None;
 #if USE_MQTT
 AsyncMqttClient* mqttClient = NULL;
 AsyncMqttClient* MqttManager::mqttClient = NULL;
-//char* MqttManager::mqttServer = NULL;
-//char* MqttManager::mqttUser = NULL;
-//char* MqttManager::mqttPassword = NULL;
 char* MqttManager::clientId = NULL;
 char* MqttManager::lampInputBuffer = NULL;
 char* MqttManager::topicInput = NULL;
@@ -228,6 +223,14 @@ float  currentTemp = -999.0f;
 String currentCondition = "";
 uint32_t weatherUpdateTimer = 0;
 const uint32_t WEATHER_UPDATE_INTERVAL = 600000UL;
+
+bool ssdpInitialized = false;
+IPAddress previousIP;
+wl_status_t lastWiFiStatus = WL_DISCONNECTED;
+uint32_t lastReconnectAttempt = 0;
+const uint32_t RECONNECT_INTERVAL = 5000;
+const uint32_t ROUTER_BOOT_DELAY = 30000;
+uint8_t ESP_CONN_TIMEOUT;
 
 AlarmType alarms[7];
 static const uint8_t dawnOffsets[] PROGMEM = {5, 10, 15, 20, 25, 30, 40, 50, 60};   // опции для выпадающего списка параметра "Продолжительность Рассвета" (будильник); синхронизировано с android приложением
@@ -298,7 +301,6 @@ uint32_t my_timer;
 uint8_t time_always;
 bool connect = false;
 uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
-uint8_t ESP_CONN_TIMEOUT;
 uint8_t PRINT_TIME ;
 uint8_t day_night = false;     // если день - true, ночь - false
 uint8_t save_file_changes =0;
@@ -498,7 +500,7 @@ void setup()  //================================================================
   ESP.wdtEnable(WDTO_8S);
   #endif
 
-  LOG.println(F("\n\n\nSYSTEM START"));
+  LOG.print(F("\n\n\nSYSTEM START"));
   #ifdef ESP32
   LOG.print (F(" ESP32\n"));
   #endif
@@ -554,7 +556,6 @@ void setup()  //================================================================
   #if GENERAL_DEBUG
   LOG.print(F("Старт SSDP\n"));
   #endif
-  SSDP_init();
 
   
 //-----------Инициализируем переменные, хранящиеся в файле config.json--------------
@@ -776,18 +777,11 @@ void setup()  //================================================================
 
   // WI-FI
   LOG.printf_P(PSTR("\nРабочий режим лампы: ESP_MODE = %d\n"), espMode);
-  //Запускаем WIFI
-  LOG.println(F("Старуем WIFI"));
-  
   WiFi.persistent(false);   // Побережём EEPROM
- 
-  if (espMode == 0U)                                        // режим WiFi точки доступа
-  {
-  // Отключаем WIFI
-  WiFi.disconnect();
-  // Меняем режим на режим точки доступа
-  WiFi.mode(WIFI_AP);
-  // Задаем настройки сети
+  WiFi.mode(espMode == 0U ? WIFI_AP : WIFI_STA);
+
+  if (espMode == 0U) {
+    // Режим точки доступа
     if (sizeof(AP_STATIC_IP))
     {
       WiFi.softAPConfig(                      
@@ -795,24 +789,12 @@ void setup()  //================================================================
         IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),                    // первый доступный IP адрес сети
         IPAddress(255, 255, 255, 0));                                                       // маска подсети
     }
-  // Включаем WIFI в режиме точки доступа с именем и паролем
-  // хронящихся в переменных _ssidAP _passwordAP в фвйле config.json
-    #ifdef ESP32_USED
      WiFi.softAP(AP_NAME.c_str(), AP_PASS.c_str());
-    #else
-     WiFi.softAP(AP_NAME, AP_PASS);
-    #endif
-    LOG.print(F("Старт WiFi в режиме точки доступа\n"));
-    LOG.print(F("IP адрес: "));
+    delay(100);
+    LOG.print(F("AP запущен: "));
     LOG.println(WiFi.softAPIP());
-   #if GENERAL_DEBUG
-    LOG.println (F("*******************************************"));
-    LOG.print (F("Heap Size after connection AP mode = "));
-    LOG.println(ESP.getFreeHeap());
-    LOG.println (F("*******************************************"));
-    #endif
-    connect = true;
-    #ifdef DISPLAY_IP_AT_START
+    connect = true;  
+    #if DISPLAY_IP_AT_START
         loadingFlag = true;
       #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
         digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
@@ -833,38 +815,31 @@ void setup()  //================================================================
       #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
         digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
       #endif
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
+        digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #endif
         loadingFlag = true;
       #endif  // DISPLAY_IP_AT_START
-    delay (100);    
-  }
-  else                                                      // режим WiFi клиента. Подключаемся к роутеру
-  {
-    LOG.println(F("Старт WiFi в режиме клиента (подключение к роутеру)"));
-//  WIFI_start_station_mode (); 
-  
-   WiFi.persistent(false);
-
-  // Попытка подключения к Роутеру
-  WiFi.mode(WIFI_STA);
-  String _ssid = jsonRead(configSetup, "ssid");
-  String _password = jsonRead(configSetup, "password");
-  if (_ssid == "" && _password == "") {
-   espMode = 0;
-   jsonWrite(configSetup, "ESP_mode", (int)espMode);
-   saveConfig(); 
-   ESP.restart();
-  }
-  else {
-
+      delay (100);
+  } else {
+    // Режим клиента
+    String main_ssid = jsonRead(configSetup, "ssid");
+    String main_pass = jsonRead(configSetup, "password");
+    if (main_ssid.length() == 0) {
+      LOG.println(F("SSID не задан → переход в AP"));
+      espMode = 0;
+      jsonWrite(configSetup, "ESP_mode", 0);
+      saveConfig();
+      ESP.restart();
+    }
+    else {
     if(use_static_ip)
     {  
         WiFi.config(Static_IP, Gateway, Subnet, DNS1, DNS2); // Конфигурация под статический IP Address
     }
-  delay(10);  
-    WiFi.begin(_ssid.c_str(), _password.c_str());
-  }
-    
-  delay (10);    
+    wifiMulti.addAP(main_ssid.c_str(), main_pass.c_str());
+
+    delay (10);    
     #ifdef USE_BLYNK
     Blynk.config(USE_BLYNK, "blynk.tk", 8080);
     #endif
@@ -876,7 +851,73 @@ void setup()  //================================================================
      ESP.wdtFeed();
     #endif
 
-   
+    bool wifi_multi_enabled = jsonReadtoInt(configSetup, "wifi_multi");
+    if (wifi_multi_enabled) {
+      String ssid2 = jsonRead(configSetup, "ssid2");
+      String pass2 = jsonRead(configSetup, "password2");
+      String ssid3 = jsonRead(configSetup, "ssid3");
+      String pass3 = jsonRead(configSetup, "password3");
+      if (ssid2.length() > 0) {
+        wifiMulti.addAP(ssid2.c_str(), pass2.c_str());
+        LOG.printf_P(PSTR("Добавлена сеть 2: %s\n"), ssid2.c_str());
+      }
+      if (ssid3.length() > 0) {
+        wifiMulti.addAP(ssid3.c_str(), pass3.c_str());
+        LOG.printf_P(PSTR("Добавлена сеть 3: %s\n"), ssid3.c_str());
+      }
+    }
+
+    LOG.print(F("Подключение к WiFi"));
+    uint32_t startTime = millis();
+    uint32_t timeout = (uint32_t)ESP_CONN_TIMEOUT * 1000UL;
+    if (timeout == 0);
+
+    while (wifiMulti.run() != WL_CONNECTED) {
+      delay(500);
+      LOG.print(F("."));
+      if (millis() - startTime > timeout) {
+        LOG.println(F("\nНе удалось подключиться, активируем AP режим"));
+        espMode = 0;
+        jsonWrite(configSetup, "ESP_mode", 0);
+        saveConfig();
+        ESP.restart();
+      }
+    }
+
+    LOG.println(F("\nWiFi подключён!"));
+    LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
+    LOG.print(F("IP: ")); LOG.println(WiFi.localIP());
+    LOG.print(F("RSSI: ")); LOG.print(WiFi.RSSI()); LOG.println(F(" dBm"));
+    connect = true;
+    #if DISPLAY_IP_AT_START
+        loadingFlag = true;
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
+        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+      #endif
+        while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
+           delay(1);
+           #ifdef ESP32_USED
+            esp_task_wdt_reset();
+          #else
+           ESP.wdtFeed();
+          #endif
+           }
+        if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
+          FastLED.clear();
+          delay(1);
+          FastLED.show();
+        }
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
+        digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #endif
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
+        digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #endif
+        loadingFlag = true;
+      #endif  // DISPLAY_IP_AT_START
+  }
+  SSDP_init();
+
   // UDP 
   LOG.printf_P(PSTR("\nСтарт UDP сервера. Порт: %u\n"), localPort);
   Udp.begin(localPort);
@@ -997,9 +1038,80 @@ void setup()  //================================================================
   #endif //HEAP_SIZE_PRINT 
 }
 
+timerMinim apFallbackTimer(1000UL);
+bool apFallbackActive = false;
+
+void checkWiFiFallback() {
+  if (espMode == 0U) {
+    apFallbackActive = false;
+    return;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    apFallbackTimer.reset();
+    apFallbackActive = false;
+    return;
+  }
+  // Wi-Fi потерян
+  if (!apFallbackActive && apFallbackTimer.isReady()) {
+    static uint16_t lostSeconds = 0;
+    lostSeconds++;
+    uint16_t timeoutSeconds = 180 + random(0, 1621);
+    if (lostSeconds >= timeoutSeconds) {
+      LOG.println(F("\nWi-Fi потерян слишком долго - переключаемся в режим AP+STA!"));
+      espMode = 0;
+      jsonWrite(configSetup, "ESP_mode", 0);
+      saveConfig();
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAPConfig(
+        IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]),
+        IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),
+        IPAddress(255, 255, 255, 0));
+      WiFi.softAP(AP_NAME.c_str(), AP_PASS.c_str());
+      LOG.print(F("Точка доступа запущена: "));
+      LOG.println(WiFi.softAPIP());
+      connect = true;
+      apFallbackActive = true;
+      restartSSDP();
+    }
+  }
+}
+
+void wifiReconnect() {
+  bool currentlyConnected = false;
+  if (espMode == 0U) {
+    currentlyConnected = (wifiMulti.run(800) == WL_CONNECTED);
+  } else {
+    currentlyConnected = (WiFi.status() == WL_CONNECTED);
+  }
+  if (currentlyConnected && !connect) {
+    LOG.println(F("\nWiFi подключён!"));
+    LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
+    LOG.print(F("IP:   ")); LOG.println(WiFi.localIP());
+    connect = true;
+    restartSSDP();
+  }
+  else if (!currentlyConnected && connect && espMode == 1U) {
+    LOG.println(F("WiFi потерян"));
+    connect = false;
+    ssdpInitialized = false;
+  }
+}
+
+void restartSSDP() {
+  if (ssdpInitialized && WiFi.getMode() != WIFI_OFF) {
+  }
+  LOG.println(F("Инициализация SSDP..."));
+  SSDP_init();
+  ssdpInitialized = true;
+  previousIP = (espMode == 0U && WiFi.status() != WL_CONNECTED) ? WiFi.softAPIP() : WiFi.localIP();
+}
 
 void loop()  //====================================================================  void loop()  ===========================================================================
 {
+  checkWiFiFallback();
+  wifiReconnect();
+  parseUDP();
+
   #if USE_RTC
      if (hasRtc) {
       #ifdef RTC_3231
@@ -1013,72 +1125,6 @@ void loop()  //=================================================================
   }
  }
   #endif //USE_RTC
-
- if (espMode) {
-  if (WiFi.status() != WL_CONNECTED) {
-    if ((millis()-my_timer) >= 1000UL) {    
-      my_timer=millis();
-      if (ESP_CONN_TIMEOUT--) {
-        LOG.print(F("."));
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
-      }
-      else {
-        // Если не удалось подключиться запускаем в режиме AP
-        espMode = 0;
-        jsonWrite(configSetup, "ESP_mode", (int)espMode);
-        saveConfig(); 
-        ESP.restart();
-      }
-    }
-  }
-    else {
-        // Иначе удалось подключиться отправляем сообщение
-        // о подключении и выводим адрес IP
-        LOG.print(F("\nПодключение к роутеру установлено\n"));
-        LOG.print(F("IP адрес: "));
-        LOG.println(WiFi.localIP());
-        long rssi = WiFi.RSSI();
-        LOG.print(F("Уровень сигнала сети RSSI = "));
-        LOG.print(rssi);
-        LOG.println(F(" dbm"));
-        connect = true;
-        lastResolveTryMoment = 0;
-      #if GENERAL_DEBUG
-        LOG.println (F("***********************************************"));
-        LOG.print (F("Heap Size after connection Station mode = "));
-        LOG.println(ESP.getFreeHeap());
-        LOG.println (F("***********************************************"));
-      #endif
-      #ifdef DISPLAY_IP_AT_START
-        loadingFlag = true;
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
-        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
-      #endif
-        while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
-           delay(1);
-           #ifdef ESP32_USED
-            esp_task_wdt_reset();
-          #else
-           ESP.wdtFeed();
-          #endif
-           }
-        if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
-          FastLED.clear();
-          delay(1);
-          FastLED.show();
-        }
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-        digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-      #endif
-        loadingFlag = true;
-      #endif  // DISPLAY_IP_AT_START
-        delay (0);
-    }
- }
 
 do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++========= Главный цикл ==========+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -714,6 +714,9 @@ void Print_IP()   {
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
       digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
     #endif
+    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
+      digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+    #endif
 }
 
 void Folder_Next_Prev(bool direction)    {

@@ -108,6 +108,10 @@ void User_setings ()  {
   HTTP.on("/ssid", HTTP_GET, []() {
   jsonWrite(configSetup, "ssid", HTTP.arg("ssid"));
   jsonWrite(configSetup, "password", HTTP.arg("password"));
+  jsonWrite(configSetup, "ssid2",         HTTP.arg("ssid2"));
+  jsonWrite(configSetup, "password2",     HTTP.arg("password2"));
+  jsonWrite(configSetup, "ssid3",         HTTP.arg("ssid3"));
+  jsonWrite(configSetup, "password3",     HTTP.arg("password3"));
   jsonWrite(configSetup, "TimeOut", HTTP.arg("TimeOut").toInt()); 
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
   saveConfig();                 // Функция сохранения строки конфигурации в файл
@@ -2291,59 +2295,20 @@ void handle_tm1637_status() {
 
 // Статус RTC DS3231
 void handle_rtc_status() {
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(256);
+  const char* status;
+  bool connected = false;
+
+#if RTC_3231
+  connected = true;
+  status = "ВКЛЮЧЕН";
+#else
+  status = "ОТКЛЮЧЕН";
+#endif
+
+  doc["connected"] = connected;
+  doc["status"] = status;
   String response;
-
-  jsonWrite(configSetup, "rtc_valid", "0");
-  jsonWrite(configSetup, "rtc_status", "НЕТ ДАННЫХ");
-
-  #if defined(USE_RTC) && (USE_RTC == 1)
-
-    #ifdef RTC_3231
-      if (hasRtc) {
-        if (Rtc.IsDateTimeValid()) {
-          RtcDateTime dt = Rtc.GetDateTime();
-          char buf[20];
-          snprintf_P(buf, sizeof(buf), PSTR("%02u:%02u:%02u %02u.%02u.%04u"),
-                     dt.Hour(), dt.Minute(), dt.Second(),
-                     dt.Day(), dt.Month(), dt.Year());
-
-          jsonWrite(configSetup, "rtc_valid", "1");
-          jsonWrite(configSetup, "rtc_status", "OK");
-          jsonWrite(configSetup, "rtc_time", buf);
-
-          doc["rtc_valid"]  = "1";
-          doc["rtc_status"] = "OK";
-          doc["rtc_time"]   = buf;
-          doc["rtc_type"]   = "DS3231";
-        } else {
-          jsonWrite(configSetup, "rtc_status", "Батарейка разряжена");
-          doc["rtc_valid"]  = "0";
-          doc["rtc_status"] = "Батарейка разряжена";
-          doc["rtc_type"]   = "DS3231";
-        }
-      } else {
-        jsonWrite(configSetup, "rtc_status", "Модуль не найден");
-        doc["rtc_valid"]  = "0";
-        doc["rtc_status"] = "Модуль не найден";
-        doc["rtc_type"]   = "none";
-      }
-    #else
-      jsonWrite(configSetup, "rtc_status", "Тип RTC не определён");
-      doc["rtc_status"] = "Тип RTC не определён";
-    #endif
-
-  #else
-    jsonWrite(configSetup, "rtc_valid", "0");
-    jsonWrite(configSetup, "rtc_status", "ОТКЛЮЧЕНО");
-    jsonWrite(configSetup, "rtc_time", "");
-
-    doc["rtc_valid"]  = "0";
-    doc["rtc_status"] = "ОТКЛЮЧЕНО";
-    doc["rtc_type"]   = "disabled";
-  #endif
-  doc["time_source"] = timeSynched ? (stillUseNTP ? "NTP" : "Ручная") : "Нет";
-  saveConfig();
   serializeJson(doc, response);
   HTTP.send(200, "application/json; charset=utf-8", response);
 }
