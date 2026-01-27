@@ -114,7 +114,7 @@ void buttonTick()
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -194,7 +194,7 @@ void buttonTick()
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -238,7 +238,7 @@ void buttonTick()
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -276,7 +276,7 @@ void buttonTick()
         changePower();
         jsonWrite(configSetup, "Power", ONflag);
         jsonWrite(configSetup, "tmr", 1);
-        #ifdef USE_BLYNK
+        #if USE_BLYNK
         updateRemoteBlynkParams();
         #endif
         TimerManager::TimeToFire = millis() + BUTTON_SET_SLEEP_TIMER1 * 60UL * 1000UL;
@@ -509,7 +509,7 @@ if (touch.isStep()){
           changePower();
           jsonWrite(configSetup, "Power", ONflag);
           jsonWrite(configSetup, "tmr", 1);
-          #ifdef USE_BLYNK
+          #if USE_BLYNK
           updateRemoteBlynkParams();
           #endif
           TimerManager::TimeToFire = millis() + BUTTON_SET_SLEEP_TIMER2 * 60UL * 1000UL;
@@ -756,7 +756,7 @@ if (touch.isStep()){
         ONflag = true;
         jsonWrite(configSetup, "Power", ONflag);
         changePower();
-        #ifdef USE_BLYNK
+        #if USE_BLYNK
         updateRemoteBlynkParams();
         #endif
         break;
@@ -773,7 +773,7 @@ if (touch.isStep()){
           changePower();
           jsonWrite(configSetup, "Power", ONflag);
           jsonWrite(configSetup, "tmr", 1);
-          #ifdef USE_BLYNK
+          #if USE_BLYNK
           updateRemoteBlynkParams();
           #endif
           TimerManager::TimeToFire = millis() + BUTTON_SET_SLEEP_TIMER2 * 60UL * 1000UL;
@@ -986,7 +986,7 @@ if (touch.isStep()){
     }
     #endif
     
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     

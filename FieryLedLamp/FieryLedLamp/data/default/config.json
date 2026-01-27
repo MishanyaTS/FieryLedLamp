@@ -71,5 +71,7 @@
 "openweather_key": "",
 "yandex_geo": "",
 "prefer_yandex": 1,
-"show_weather": 1
+"show_weather": 1,
+"blynk_token":"",
+"use_blynk":0
 }

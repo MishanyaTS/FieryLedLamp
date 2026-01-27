@@ -442,6 +442,7 @@ void clockTicker_blink()
   else {
         tm1637_brightness ();
         display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
+        display.displayClock(hours, last_minute);
       } 
   }    
 }

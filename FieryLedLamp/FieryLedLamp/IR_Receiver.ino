@@ -1,374 +1,239 @@
-// 
 #if USE_IR_RECEIVER
 
-#define IR_REPEAT_TIMER      500   // Время ожидания повтора
-#define IR_TICK_TIMER        100    // Время между автоповтором
-#define IR_DIGIT_ENTER_TIMER 2000   // Время для ввода второй цифры номера эффекта
+static bool     IR_LEARN_ACTIVE = false;
+static uint32_t IR_LEARN_START  = 0;
+static uint32_t IR_LEARN_LAST   = 0;
+static char     IR_LEARN_KEY[24] = {0};
+static const uint32_t IR_LEARN_TIMEOUT_MS = 15000UL; // 15 сек
 
-void IR_Receive_Handle ()   {       // Обработка принятого сигнала
-    if (irrecv.decode(&results)) {
-        if (results.repeat) { 
-            if (millis() - IR_Repeat_Timer > IR_REPEAT_TIMER) {
-                //Serial.print("Repeat  ");
-                IR_Data_Ready = 2;
-            }
-        }
-        else {
-            IR_Code = (uint32_t)results.value;
-            IR_Repeat_Timer = millis();
-            IR_Data_Ready = 1;
-        }
-    irrecv.resume();  // Receive the next value
-    }
 
-    if (Enter_Digit_1 && millis() - IR_Dgit_Enter_Timer > IR_DIGIT_ENTER_TIMER){  // Если одна цифра нажата и время ожидания нажатия второй цифры вышло
-        Enter_Digit_1 = 0;
-        currentMode = eff_num_correct[Enter_Number];
-        jsonWrite(configSetup, "eff_sel", Enter_Number);
-        jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-        jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-        jsonWrite(configSetup, "sc", modes[currentMode].Scale);
-        SetBrightness(modes[currentMode].Brightness);
-        loadingFlag = true;
-        //settChanged = true;
-        //eepromTimeout = millis();
-        //timeout_save_file_changes = millis();
-        //bitSet (save_file_changes, 0);
-        if (random_on && FavoritesManager::FavoritesRunning)
-            selectedSettings = 1U;
-        #if USE_MQTT
-           if (espMode == 1U) MqttManager::needToPublish = true;
-        #endif
-        #ifdef USE_BLYNK
-          updateRemoteBlynkParams();
-        #endif
-        #if USE_MULTIPLE_LAMPS_CONTROL
-          repeat_multiple_lamp_control = true;
-        #endif  //USE_MULTIPLE_LAMPS_CONTROL
-        //Serial.println(Enter_Number);
-        //Serial.println("  1 цифра");
+static bool IR_IsAllowedKey(const char* k) {
+  if (!k || !k[0]) return false;
+
+  const char* allowed[] = {
+    "on_off","mute",
+    "prev","next","cycle","eq","time",
+    "vol_down","vol_up","ip",
+    "br_up","br_down","sp_up","sp_down","sc_up","sc_down",
+    "fav_add","fav_del","rnd","def",
+    "fold_prev","fold_next",
+    "d0","d1","d2","d3","d4","d5","d6","d7","d8","d9",
+  };
+  for (size_t i = 0; i < sizeof(allowed) / sizeof(allowed[0]); i++) {
+    if (strcmp(k, allowed[i]) == 0) return true;
   }
+  return false;
 }
 
-void IR_Receive_Button_Handle()   {     //Обработка принятых команд (нажатых кнопок пульта ДУ)
-    switch(IR_Code) {
-        case IR_ON_OFF:
-        if (IR_Data_Ready != 2)  // No repeat
-        IR_Power();
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_ON_OFF:
-        if (IR_Data_Ready != 2)  // No repeat
-        IR_Power();
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_MUTE:
-        if (IR_Data_Ready != 2)  // No repeat
-        Mute();
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_MUTE:
-        if (IR_Data_Ready != 2)  // No repeat
-        Mute();
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_PREV:
-        Prev_Next_eff(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_PREV:
-        Prev_Next_eff(false);
-        break;
-        #endif //USE_2_PULTS
-        case IR_NEXT:
-        Prev_Next_eff(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_NEXT:
-        Prev_Next_eff(true);
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_CYCLE:
-        if (IR_Data_Ready != 2)  // No repeat
-        Cycle_on_off();
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_CYCLE:
-        if (IR_Data_Ready != 2)  // No repeat
-        Cycle_on_off();
-        break;
-        #endif //USE_2_PULTS
-       
-        case IR_BR_UP:
-        Bright_Up_Down(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_BR_UP:
-        Bright_Up_Down(true);
-        break;
-        #endif //USE_2_PULTS
-        case IR_BR_DOWN:
-        Bright_Up_Down(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_BR_DOWN:
-        Bright_Up_Down(false);
-        break;
-        #endif //USE_2_PULTS
-       
-        case IR_SP_UP:
-        Speed_Up_Down(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_SP_UP:
-        Speed_Up_Down(true);
-        break;
-         #endif //USE_2_PULTS
-       case IR_SP_DOWN:
-        Speed_Up_Down(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_SP_DOWN:
-        Speed_Up_Down(false);
-        break;
-        #endif //USE_2_PULTS
-       
-        case IR_SC_UP:
-        Scale_Up_Down(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_SC_UP:
-        Scale_Up_Down(true);
-        break;
-        #endif //USE_2_PULTS
-       case IR_SC_DOWN:
-        Scale_Up_Down(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_SC_DOWN:
-        Scale_Up_Down(false);
-        break;
-        #endif //USE_2_PULTS
-       
-        case IR_VOL_UP:
-        Volum_Up_Down(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_VOL_UP:
-        Volum_Up_Down(true);
-        break;
-        #endif //USE_2_PULTS
-        case IR_VOL_DOWN:
-        Volum_Up_Down(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_VOL_DOWN:
-        Volum_Up_Down(false);
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_TIME:
-        if (IR_Data_Ready != 2)  // No repeat
-        printTime(thisTime, true, ONflag);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_TIME:
-        if (IR_Data_Ready != 2)  // No repeat
-        printTime(thisTime, true, ONflag);
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_IP:
-        if (IR_Data_Ready != 2)  // No repeat
-        Print_IP();
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_IP:
-        if (IR_Data_Ready != 2)  // No repeat
-        Print_IP();
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_FOLD_PREV:
-        Folder_Next_Prev(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_FOLD_PREV:
-        Folder_Next_Prev(false);
-        break;
-        #endif //USE_2_PULTS
-       case IR_FOLD_NEXT:
-        Folder_Next_Prev(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_FOLD_NEXT:
-        Folder_Next_Prev(true);
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_RND:
-        if (IR_Data_Ready != 2)  // No repeat
-        Current_Eff_Rnd_Def(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_RND:
-        if (IR_Data_Ready != 2)  // No repeat
-        Current_Eff_Rnd_Def(true);
-        break;
-        #endif //USE_2_PULTS
-        case IR_DEF:
-        if (IR_Data_Ready != 2)  // No repeat
-        Current_Eff_Rnd_Def(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_DEF :
-        if (IR_Data_Ready != 2)  // No repeat
-        Current_Eff_Rnd_Def(false);
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_EQ:
-        if (IR_Data_Ready != 2)  // No repeat
-        IR_Equalizer();
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_EQ:
-        if (IR_Data_Ready != 2)  // No repeat
-        IR_Equalizer();
-        break;
-        #endif //USE_2_PULTS
-        
-        case IR_FAV_ADD:
-        if (IR_Data_Ready != 2)  // No repeat
-        Favorit_Add_Del(true);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_FAV_ADD:
-        if (IR_Data_Ready != 2)  // No repeat
-        Favorit_Add_Del(true);
-        break;
-        #endif //USE_2_PULTS
-        case IR_FAV_DEL:
-        if (IR_Data_Ready != 2)  // No repeat
-        Favorit_Add_Del(false);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_FAV_DEL :
-        if (IR_Data_Ready != 2)  // No repeat
-        Favorit_Add_Del(false);
-        break;
-        #endif //USE_2_PULTS
+// Старт обучения
+bool IR_LearnStart(const char* key) {
+  if (!IR_IsAllowedKey(key)) return false;
 
-        case IR_1:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(1);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_1 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(1);
-        break;
-        #endif //USE_2_PULTS
-        case IR_2:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(2);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_2 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(2);
-        break;
-        #endif //USE_2_PULTS
-        case IR_3:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(3);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_3 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(3);
-        break;
-        #endif //USE_2_PULTS
-        case IR_4:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(4);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_4 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(4);
-        break;
-        #endif //USE_2_PULTS
-        case IR_5:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(5);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_5 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(5);
-        break;
-        #endif //USE_2_PULTS
-        case IR_6:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(6);
-        break;
-        #ifdef USE_2_PULTS
-       case IR2_6 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(6);
-        break;
-        #endif //USE_2_PULTS
-        case IR_7:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(7);
-        break;
-        #ifdef USE_2_PULTS
-       case IR2_7 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(7);
-        break;
-        #endif //USE_2_PULTS
-        case IR_8:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(8);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_8 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(8);
-        break;
-        #endif //USE_2_PULTS
-        case IR_9:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(9);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_9 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(9);
-        break;
-        #endif //USE_2_PULTS
-        case IR_0:
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(0);
-        break;
-        #ifdef USE_2_PULTS
-        case IR2_0 :
-        if (IR_Data_Ready != 2)  // No repeat
-        Digit_Handle(0);
-        break;
-        #endif //USE_2_PULTS
+  memset(IR_LEARN_KEY, 0, sizeof(IR_LEARN_KEY));
+  strncpy(IR_LEARN_KEY, key, sizeof(IR_LEARN_KEY) - 1);
 
-        default: break;
+  IR_LEARN_ACTIVE = true;
+  IR_LEARN_START  = millis();
+  IR_LEARN_LAST   = 0;
+  return true;
+}
+
+void IR_LearnGetStatusJson(String &out) {
+  // авто-таймаут
+  if (IR_LEARN_ACTIVE && (millis() - IR_LEARN_START > IR_LEARN_TIMEOUT_MS)) {
+    IR_LEARN_ACTIVE = false;
+    memset(IR_LEARN_KEY, 0, sizeof(IR_LEARN_KEY));
+  }
+
+  out = "{";
+  out += "\"active\":";
+  out += (IR_LEARN_ACTIVE ? "true" : "false");
+  out += ",\"key\":\"";
+  out += IR_LEARN_KEY;
+  out += "\",\"last\":";
+  out += String(IR_LEARN_LAST);
+  out += "}";
+}
+
+// Если активен режим обучения — сохраняем код и НЕ выполняем действие кнопки.
+static bool IR_LearnHandle(uint32_t code, uint8_t dataReadyState) {
+  if (!IR_LEARN_ACTIVE) return false;
+  if (code == 0xFFFFFFFF) return true;      // NEC repeat
+  if (dataReadyState == 2) return true;     // repeat state
+  if (millis() - IR_LEARN_START > IR_LEARN_TIMEOUT_MS) {
+    IR_LEARN_ACTIVE = false;
+    memset(IR_LEARN_KEY, 0, sizeof(IR_LEARN_KEY));
+    return true;
+  }
+
+  if (code == 0) return true;
+  String configIR = readFile(F("config_ir.json"), 4096);
+  if (configIR == "Failed" || configIR == "Large") {
+    IR_LEARN_ACTIVE = false;
+    memset(IR_LEARN_KEY, 0, sizeof(IR_LEARN_KEY));
+    return true;
+  }
+  // сохраняем код в выбранный ключ
+  jsonWrite(configIR, IR_LEARN_KEY, (int)code);
+  writeFile(F("config_ir.json"), configIR);
+
+  IR_LoadConfigFromFile();
+  IR_LEARN_LAST = code;
+  IR_LEARN_ACTIVE = false;
+  memset(IR_LEARN_KEY, 0, sizeof(IR_LEARN_KEY));
+  return true;
+}
+
+void IR_Receive_Button_Handle() {  // Обработка принятых команд (нажатых кнопок пульта ДУ)
+  if (IR_LearnHandle(IR_Code, IR_Data_Ready)) return;
+  if (IR_Code == 0xFFFFFFFF) return;   // игнор repeat кадра NEC
+  if (IR_Data_Ready == 2) return;      // игнор повтор (repeat state)
+
+    static uint32_t lastCode = 0;
+    static uint32_t lastMs   = 0;
+    uint32_t now = millis();
+    if (IR_Code == lastCode && (now - lastMs) < 200) return;
+    lastCode = IR_Code;
+    lastMs   = now;
+
+  if (IR_Code == IR_ON_OFF) {
+    if (IR_Data_Ready != 2) {
+      IR_Power();
     }
-    #if GENERAL_DEBUG
-    LOG.print("IR_CODE = ");
-    LOG.println(IR_Code, HEX);
-    #endif  //GENERAL_DEBUG
+  }
+  else if (IR_Code == IR_MUTE) {
+    if (IR_Data_Ready != 2) {
+      Mute();
+    }
+  }
+  else if (IR_Code == IR_PREV) {
+    Prev_Next_eff(false);
+  }
+  else if (IR_Code == IR_NEXT) {
+    Prev_Next_eff(true);
+  }
+  else if (IR_Code == IR_CYCLE) {
+    if (IR_Data_Ready != 2) {
+     Cycle_on_off();
+    }
+  }
+  else if (IR_Code == IR_EQ) {
+    if (IR_Data_Ready != 2) {
+     IR_Equalizer();
+    }
+  }
+  else if (IR_Code == IR_TIME) {
+    if (IR_Data_Ready != 2) {
+     printTime(thisTime, true, ONflag);
+    }
+  }
+  else if (IR_Code == IR_VOL_DOWN) {
+    Volum_Up_Down(false);
+  }
+  else if (IR_Code == IR_VOL_UP) {
+    Volum_Up_Down(true);
+  }
+  else if (IR_Code == IR_IP) {
+    if (IR_Data_Ready != 2) {
+     Print_IP();
+    }
+  }
+  else if (IR_Code == IR_BR_UP) {
+    Bright_Up_Down(true);
+  }
+  else if (IR_Code == IR_BR_DOWN) {
+    Bright_Up_Down(false);
+  }
+  else if (IR_Code == IR_SP_UP) {
+    Speed_Up_Down(true);
+  }
+  else if (IR_Code == IR_SP_DOWN) {
+    Speed_Up_Down(false);
+  }
+  else if (IR_Code == IR_SC_UP) {
+    Scale_Up_Down(true);
+  }
+  else if (IR_Code == IR_SC_DOWN) {
+    Scale_Up_Down(false);
+  }
+  else if (IR_Code == IR_FAV_ADD) {
+    Favorit_Add_Del(true);
+  }
+  else if (IR_Code == IR_FAV_DEL) {
+      Favorit_Add_Del(false);
+  }
+  else if (IR_Code == IR_RND) {
+    if (IR_Data_Ready != 2) {
+      Current_Eff_Rnd_Def(true);
+    }
+  }
+  else if (IR_Code == IR_DEF) {
+    if (IR_Data_Ready != 2) {
+      Current_Eff_Rnd_Def(false);
+    }
+  }
+  else if (IR_Code == IR_FOLD_PREV) {
+      Folder_Next_Prev(false);
+  }
+  else if (IR_Code == IR_FOLD_NEXT) {
+      Folder_Next_Prev(true);
+  }
+  else if (IR_Code == IR_1) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(1);
+    }
+  }
+  else if (IR_Code == IR_2) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(2);
+    }
+  }
+  else if (IR_Code == IR_3) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(3);
+    }
+  }
+  else if (IR_Code == IR_4) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(4);
+    }
+  }
+  else if (IR_Code == IR_5) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(5);
+    }
+  }
+  else if (IR_Code == IR_6) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(6);
+    }
+  }
+  else if (IR_Code == IR_7) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(7);
+    }
+  }
+  else if (IR_Code == IR_8) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(8);
+    }
+  }
+  else if (IR_Code == IR_9) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(9);
+    }
+  }
+  else if (IR_Code == IR_0) {
+    if (IR_Data_Ready != 2) {
+      Digit_Handle(0);
+    }
+  }
+  #if GENERAL_DEBUG
+  LOG.print("IR_CODE = ");
+  LOG.println(IR_Code, HEX);
+  LOG.print("IR DEC = ");
+  LOG.println(IR_Code);
+  #endif  //GENERAL_DEBUG
 }
 
 void IR_Power()   {
@@ -439,7 +304,7 @@ void IR_Power()   {
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -540,7 +405,7 @@ void Prev_Next_eff(bool direction)   {
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -640,10 +505,6 @@ void Scale_Up_Down(bool direction)   {
     #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение масштаба: %d\n"), modes[currentMode].Scale);
     #endif
-    //timeout_save_file_changes = millis();
-    //bitSet (save_file_changes, 0);
-    //settChanged = true;
-    //eepromTimeout = millis();
     #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -785,47 +646,121 @@ void Favorit_Add_Del(bool direction)   {
     else showWarning(CRGB::Red, 500, 250U);             // мигание красным цветом 0.5 секунды
 }
 
-void Digit_Handle (uint8_t digit)   {
-    if (!Enter_Digit_1){
-        Enter_Digit_1 = 1;
-        IR_Dgit_Enter_Timer = millis();
+void Digit_Handle(uint8_t digit) {
+    if (Enter_Digits_Count == 0) {
         Enter_Number = digit;
-        #if USE_TM1637
-        DisplayFlag = 3;
-        Display_Timer(digit);
-        #endif
-       //Serial.println(Enter_Number);
-    }
-    else {
-        Enter_Digit_1 = 0;
+    } else {
         Enter_Number = Enter_Number * 10 + digit;
-        currentMode = eff_num_correct[Enter_Number];
-        #if USE_TM1637
-        DisplayFlag = 3;
-        Display_Timer(Enter_Number);
-        #endif
-        jsonWrite(configSetup, "eff_sel", Enter_Number);
-        jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-        jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-        jsonWrite(configSetup, "sc", modes[currentMode].Scale);
-        SetBrightness(modes[currentMode].Brightness);
-        loadingFlag = true;
-        //timeout_save_file_changes = millis();
-        //bitSet (save_file_changes, 0);
-        if (random_on && FavoritesManager::FavoritesRunning)
-            selectedSettings = 1U;
-        #if USE_MQTT
-           if (espMode == 1U) MqttManager::needToPublish = true;
-        #endif
-        #ifdef USE_BLYNK
-          updateRemoteBlynkParams();
-        #endif
-        #if USE_MULTIPLE_LAMPS_CONTROL
-          repeat_multiple_lamp_control = true;
-        #endif  //USE_MULTIPLE_LAMPS_CONTROL
-        //Serial.println(Enter_Number);
-        //Serial.println("  2 цифри");
     }
+    Enter_Digits_Count++;
+    IR_Digit_Timer = millis();
+
+    #if USE_TM1637
+      DisplayFlag = 3;
+      Display_Timer(Enter_Number);
+    #endif
+    // если ввели 3 цифры — применяем сразу
+    if (Enter_Digits_Count >= 3) {
+        Apply_Entered_Effect();
+    }
+  }
+  
+void Apply_Entered_Effect() {
+    if (Enter_Digits_Count == 0) return;
+    if (Enter_Number >= MODE_AMOUNT) {
+        showWarning(CRGB::Red, 700, 200);
+        Enter_Digits_Count = 0;
+        Enter_Number = 0;
+        return;
+    }
+    currentMode = eff_num_correct[Enter_Number];
+    jsonWrite(configSetup, "eff_sel", Enter_Number);
+    jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    SetBrightness(modes[currentMode].Brightness);
+    loadingFlag = true;
+    #if USE_MQTT
+      if (espMode == 1U) MqttManager::needToPublish = true;
+    #endif
+    #if USE_BLYNK
+      updateRemoteBlynkParams();
+    #endif
+    #if USE_MULTIPLE_LAMPS_CONTROL
+      repeat_multiple_lamp_control = true;
+    #endif
+    Enter_Digits_Count = 0;
+    Enter_Number = 0;
 }
 
+uint32_t IR_ON_OFF = 0;
+uint32_t IR_MUTE = 0;
+uint32_t IR_PREV = 0;
+uint32_t IR_NEXT = 0;
+uint32_t IR_CYCLE = 0;
+uint32_t IR_EQ = 0;
+uint32_t IR_TIME = 0;
+uint32_t IR_VOL_DOWN = 0;
+uint32_t IR_VOL_UP = 0;
+uint32_t IR_IP = 0;
+uint32_t IR_BR_UP = 0;
+uint32_t IR_BR_DOWN = 0;
+uint32_t IR_SP_UP = 0;
+uint32_t IR_SP_DOWN = 0;
+uint32_t IR_SC_UP = 0;
+uint32_t IR_SC_DOWN = 0;
+uint32_t IR_FAV_ADD = 0;
+uint32_t IR_FAV_DEL = 0;
+uint32_t IR_RND = 0;
+uint32_t IR_DEF = 0;
+uint32_t IR_FOLD_PREV = 0;
+uint32_t IR_FOLD_NEXT = 0;
+uint32_t IR_1 = 0;
+uint32_t IR_2 = 0;
+uint32_t IR_3 = 0;
+uint32_t IR_4 = 0;
+uint32_t IR_5 = 0;
+uint32_t IR_6 = 0;
+uint32_t IR_7 = 0;
+uint32_t IR_8 = 0;
+uint32_t IR_9 = 0;
+uint32_t IR_0 = 0;
+
+void IR_LoadConfigFromFile() {
+  String configIR = readFile(F("config_ir.json"), 4096);
+  if (configIR == "Failed" || configIR == "Large") return;
+
+  IR_ON_OFF   = jsonReadtoInt(configIR, "on_off");
+  IR_MUTE     = jsonReadtoInt(configIR, "mute");
+  IR_PREV     = jsonReadtoInt(configIR, "prev");
+  IR_NEXT     = jsonReadtoInt(configIR, "next");
+  IR_CYCLE    = jsonReadtoInt(configIR, "cycle");
+  IR_EQ       = jsonReadtoInt(configIR, "eq");
+  IR_TIME     = jsonReadtoInt(configIR, "time");
+  IR_VOL_DOWN = jsonReadtoInt(configIR, "vol_down");
+  IR_VOL_UP   = jsonReadtoInt(configIR, "vol_up");
+  IR_IP       = jsonReadtoInt(configIR, "ip");
+  IR_BR_UP    = jsonReadtoInt(configIR, "br_up");
+  IR_BR_DOWN  = jsonReadtoInt(configIR, "br_down");
+  IR_SP_UP    = jsonReadtoInt(configIR, "sp_up");
+  IR_SP_DOWN  = jsonReadtoInt(configIR, "sp_down");
+  IR_SC_UP    = jsonReadtoInt(configIR, "sc_up");
+  IR_SC_DOWN  = jsonReadtoInt(configIR, "sc_down");
+  IR_FAV_ADD  = jsonReadtoInt(configIR, "fav_add");
+  IR_FAV_DEL  = jsonReadtoInt(configIR, "fav_del");
+  IR_RND      = jsonReadtoInt(configIR, "rnd");
+  IR_DEF      = jsonReadtoInt(configIR, "def");
+  IR_FOLD_PREV = jsonReadtoInt(configIR, "fold_prev");
+  IR_FOLD_NEXT = jsonReadtoInt(configIR, "fold_next");
+  IR_1 = jsonReadtoInt(configIR, "d1");
+  IR_2 = jsonReadtoInt(configIR, "d2");
+  IR_3 = jsonReadtoInt(configIR, "d3");
+  IR_4 = jsonReadtoInt(configIR, "d4");
+  IR_5 = jsonReadtoInt(configIR, "d5");
+  IR_6 = jsonReadtoInt(configIR, "d6");
+  IR_7 = jsonReadtoInt(configIR, "d7");
+  IR_8 = jsonReadtoInt(configIR, "d8");
+  IR_9 = jsonReadtoInt(configIR, "d9");
+  IR_0 = jsonReadtoInt(configIR, "d0");
+}
 #endif //USE_IR_RECEIVER

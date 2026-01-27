@@ -137,7 +137,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
               MqttManager::needToPublish = true;
             }
             #endif
-            #ifdef USE_BLYNK
+            #if USE_BLYNK
             updateRemoteBlynkParams();
             #endif
             #if USE_MULTIPLE_LAMPS_CONTROL
@@ -159,7 +159,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       sendCurrent(inputBuffer);
 
-      #ifdef USE_BLYNK_PLUS
+      #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
 
@@ -206,7 +206,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
     #endif
 
-    #ifdef USE_BLYNK_PLUS
+    #if USE_BLYNK_PLUS
         updateRemoteBlynkParams();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -228,7 +228,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         MqttManager::needToPublish = true;
       }
   #endif
-  #ifdef USE_BLYNK_PLUS
+  #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
   #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -250,7 +250,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         MqttManager::needToPublish = true;
       }
   #endif
-  #ifdef USE_BLYNK_PLUS
+  #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
   #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -290,7 +290,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
       #endif
 
-      #ifdef USE_BLYNK_PLUS
+      #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
     }
@@ -300,7 +300,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Speed = atoi(buff);
 	  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-      #ifdef USE_BLYNK_PLUS
+      #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
       #if USE_MULTIPLE_LAMPS_CONTROL
@@ -320,7 +320,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
       updateSets();
       sendCurrent(inputBuffer);
-      #ifdef USE_BLYNK_PLUS
+      #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
     }
@@ -360,7 +360,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         repeat_multiple_lamp_control=true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
         sendCurrent(inputBuffer);
-        #ifdef USE_BLYNK_PLUS
+        #if USE_BLYNK_PLUS
         updateRemoteBlynkParams();
         #endif
       }  
@@ -409,7 +409,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
           MqttManager::needToPublish = true;
         }
         #endif
-        #ifdef USE_BLYNK_PLUS
+        #if USE_BLYNK_PLUS
         updateRemoteBlynkParams();
         #endif
       }
@@ -743,7 +743,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
          repeat_multiple_lamp_control = true;
          #endif  //USE_MULTIPLE_LAMPS_CONTROL
          sendCurrent(inputBuffer);
-         #ifdef USE_BLYNK
+         #if USE_BLYNK
          updateRemoteBlynkParams();
          #endif
        }
@@ -821,7 +821,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     changePower();
     jsonWrite(configSetup, "Power", ONflag);
     jsonWrite(configSetup, "tmr", 1);
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     if (temp == 2) TimerManager::TimeToFire = millis() + BUTTON_SET_SLEEP_TIMER2 * 60UL * 1000UL;
@@ -1008,7 +1008,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
              // и здесь же после успешной отправки списка эффектов делаем сброс настроек эффектов на значения по умолчанию
              restoreSettings();
              updateSets();
-             #ifdef USE_BLYNK_PLUS
+             #if USE_BLYNK_PLUS
              updateRemoteBlynkParams();
              #endif
              #endif
@@ -1301,7 +1301,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 			jsonWrite(configSetup, "sc", modes[eff].Scale);
             if (eff == currentMode) {
               updateSets();
-              #ifdef USE_BLYNK_PLUS
+              #if USE_BLYNK_PLUS
               updateRemoteBlynkParams();
               #endif
             }

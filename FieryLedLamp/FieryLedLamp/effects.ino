@@ -66,7 +66,7 @@ void setModeSettings(uint8_t Scale, uint8_t Speed) {
   jsonWrite(configSetup, "sp", modes[currentMode].Speed);
   jsonWrite(configSetup, "sc", modes[currentMode].Scale);  
   selectedSettings = 0U;
-#ifdef USE_BLYNK
+#if USE_BLYNK
   updateRemoteBlynkParams();
 #endif
 }
@@ -1620,7 +1620,7 @@ void colorsRoutine2()
     }
     else if (step >= deltaValue) {
       deltaHue = modes[currentMode].Scale;
-#ifdef USE_BLYNK
+#if USE_BLYNK
       if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U;
       deltaHue = modes[currentMode].Scale * 2.55;
 #endif
@@ -4608,7 +4608,7 @@ uint8_t myScale8(uint8_t x) { // даёт масштабировать кажд�
   return (253U - x4 * 72U); // 253U = 255U - 2U
 }
 
-#ifdef USE_BLYNK
+#if USE_BLYNK
 void coloredRain() // внимание! этот эффект заточен на работу бегунка Масштаб в диапазоне от 0 до 255. пока что единственный, поэтому для Блинка всё пересчитываем.
 {
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
@@ -8334,7 +8334,7 @@ void execStringsFlame() { // внимание! эффект заточен на 
   int16_t i, j;
   if (loadingFlag) {
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
-#ifdef USE_BLYNK
+#if USE_BLYNK
     if (selectedSettings) {
       setModeSettings(1U + random8(100U), 20U + random8(236U)); // у Блинка бегунок Масштаб всегда от 1 до 100
     }

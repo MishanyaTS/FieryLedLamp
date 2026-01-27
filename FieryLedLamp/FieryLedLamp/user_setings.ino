@@ -84,6 +84,10 @@ void User_setings ()  {
  HTTP.on("/set_ip", handle_set_static_ip);  // Установка статичного IP адреса, шлюза, маски подсети и DNS сервера
  HTTP.on("/auto_bri", handle_auto_bri);  // Автоматическое понижение яркости в ночное время
  HTTP.on("/show_weather", handle_show_weather);         // Погода на TM1637
+ #if USE_BLYNK
+ HTTP.on("/blynk_token", handle_blynk_token); // Токен Blynk
+ HTTP.on("/use_blynk", handle_use_blynk);   // Вкл/выкл Blynk 
+ #endif
  HTTP.on("/button_status", HTTP_GET, handle_button_status);
  HTTP.on("/ir_status", HTTP_GET, handle_ir_status);
  HTTP.on("/tm1637_status", HTTP_GET, handle_tm1637_status);
@@ -91,6 +95,7 @@ void User_setings ()  {
  HTTP.on("/mp3_status", HTTP_GET, handle_mp3_status);
  HTTP.on("/multilamp_status", HTTP_GET, handle_multilamp_status);
  HTTP.on("/mqtt_status", HTTP_GET, handle_mqtt_status);
+ HTTP.on("/blynk_status", HTTP_GET, handle_blynk_status);
  HTTP.on("/ota_status", HTTP_GET, handle_ota_status);
   
  #if USE_MQTT
@@ -117,15 +122,127 @@ void User_setings ()  {
   saveConfig();                 // Функция сохранения строки конфигурации в файл
   HTTP.send(200, F("text/plain"), F( "OK")); // отправляем ответ о выполнении
   });
+  
+#if USE_IR_RECEIVER
+  HTTP.on("/ir_code", HTTP_GET, []() {
+  String configIR = readFile(F("config_ir.json"), 4096);
+  if (configIR == "Failed" || configIR == "Large") {
+    HTTP.send(500, F("text/plain"), F("IR config error"));
+    return;
+  }
+  jsonWrite(configIR, "on_off",    HTTP.arg("on_off").toInt());
+  jsonWrite(configIR, "mute",      HTTP.arg("mute").toInt());
+  jsonWrite(configIR, "prev",      HTTP.arg("prev").toInt());
+  jsonWrite(configIR, "next",      HTTP.arg("next").toInt());
+  jsonWrite(configIR, "cycle",     HTTP.arg("cycle").toInt());
+  jsonWrite(configIR, "eq",        HTTP.arg("eq").toInt());
+  jsonWrite(configIR, "time",      HTTP.arg("time").toInt());
+  jsonWrite(configIR, "vol_down",  HTTP.arg("vol_down").toInt());
+  jsonWrite(configIR, "vol_up",    HTTP.arg("vol_up").toInt());
+  jsonWrite(configIR, "ip",        HTTP.arg("ip").toInt());
+  jsonWrite(configIR, "br_up",     HTTP.arg("br_up").toInt());
+  jsonWrite(configIR, "br_down",   HTTP.arg("br_down").toInt());
+  jsonWrite(configIR, "sp_up",     HTTP.arg("sp_up").toInt());
+  jsonWrite(configIR, "sp_down",   HTTP.arg("sp_down").toInt());
+  jsonWrite(configIR, "sc_up",     HTTP.arg("sc_up").toInt());
+  jsonWrite(configIR, "sc_down",   HTTP.arg("sc_down").toInt());
+  jsonWrite(configIR, "fav_add",   HTTP.arg("fav_add").toInt());
+  jsonWrite(configIR, "fav_del",   HTTP.arg("fav_del").toInt());
+  jsonWrite(configIR, "rnd",       HTTP.arg("rnd").toInt());
+  jsonWrite(configIR, "def",       HTTP.arg("def").toInt());
+  jsonWrite(configIR, "fold_prev", HTTP.arg("fold_prev").toInt());
+  jsonWrite(configIR, "fold_next", HTTP.arg("fold_next").toInt());
+  jsonWrite(configIR, "d1", HTTP.arg("d1").toInt());
+  jsonWrite(configIR, "d2", HTTP.arg("d2").toInt());
+  jsonWrite(configIR, "d3", HTTP.arg("d3").toInt());
+  jsonWrite(configIR, "d4", HTTP.arg("d4").toInt());
+  jsonWrite(configIR, "d5", HTTP.arg("d5").toInt());
+  jsonWrite(configIR, "d6", HTTP.arg("d6").toInt());
+  jsonWrite(configIR, "d7", HTTP.arg("d7").toInt());
+  jsonWrite(configIR, "d8", HTTP.arg("d8").toInt());
+  jsonWrite(configIR, "d9", HTTP.arg("d9").toInt());
+  jsonWrite(configIR, "d0", HTTP.arg("d0").toInt());
+  writeFile(F("config_ir.json"), configIR);
+  IR_LoadConfigFromFile();   // сразу применяем
+  HTTP.send(200, F("text/plain"), F("OK"));
+});
 
-   HTTP.on("/?setup_sound", HTTP_GET, []() {
+HTTP.on("/ir_learn", HTTP_GET, []() {
+    if (!HTTP.hasArg("key")) {
+      HTTP.send(400, F("text/plain"), F("Missing key"));
+      return;
+    }
+    String key = HTTP.arg("key");
+    key.trim();
+    if (!IR_LearnStart(key.c_str())) {
+      HTTP.send(400, F("text/plain"), F("Bad key"));
+      return;
+    }
+    HTTP.send(200, F("text/plain"), F("OK"));
+  });
+
+  HTTP.on("/ir_learn_status", HTTP_GET, []() {
+    String out;
+    IR_LearnGetStatusJson(out);
+    HTTP.send(200, F("application/json"), out);
+  });
+  
+  HTTP.on("/ir_learn_page", HTTP_GET, []() {
+    if (!HTTP.hasArg("key")) {
+      HTTP.send(400, F("text/plain"), F("Missing key"));
+      return;
+    }
+    String key = HTTP.arg("key");
+    key.trim();
+    if (!IR_LearnStart(key.c_str())) {
+      HTTP.send(400, F("text/plain"), F("Bad key"));
+      return;
+    }
+    String html;
+    html.reserve(1800);
+    html += F("<!doctype html><html><head><meta charset='utf-8'>");
+    html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
+    html += F("<title>IR Learn</title></head><body style='font-family:sans-serif;background:#111;color:#eee;padding:16px'>");
+    html += F("<h3>Обучение кнопки</h3>");
+    html += F("<p>Нажмите кнопку на пульте в течение 15 секунд...</p>");
+    html += F("<p><b>Ключ:</b> ");
+    html += key;
+    html += F("</p><pre id='st' style='background:#222;padding:10px;border-radius:8px'>ожидаю...</pre>");
+    html += F("<script>");
+    html += F("const st=document.getElementById('st');");
+    html += F("const t0=Date.now();");
+    html += F("async function poll(){");
+    html += F(" try{");
+    html += F("  const r=await fetch('/ir_learn_status');");
+    html += F("  const j=await r.json();");
+    html += F("  if(j.last && j.last!=0){ st.textContent='Записано: '+j.last+'\\nВозврат...'; setTimeout(()=>location.href='/?setup_IR',700); return; }");
+    html += F("  if(!j.active){ st.textContent='Таймаут/отмена. Возврат...'; setTimeout(()=>location.href='/?setup_IR',700); return; }");
+    html += F("  st.textContent='Ожидаю нажатие...';");
+    html += F(" }catch(e){ st.textContent='Ошибка: '+e; }");
+    html += F(" if(Date.now()-t0<16000) setTimeout(poll,500); else {location.href='/?setup_IR';}");
+    html += F("}");
+    html += F("poll();");
+    html += F("</script></body></html>");
+    HTTP.send(200, F("text/html"), html);
+  });
+#endif //USE_IR_RECEIVER
+
+    HTTP.on("/?setup_IR", HTTP_GET, []() {
+      #ifndef USE_IR_RECEIVER
+    HTTP.send(404, "text/plain", "Настройки пульта отключены в прошивке");
+      #else
+    handleFileRead("/setup_IR.htm");
+      #endif
+  });
+
+    HTTP.on("/?setup_sound", HTTP_GET, []() {
       #ifndef USE_MP3_PLAYER
     HTTP.send(404, "text/plain", "Настройки звука отключены в прошивке");
       #else
     handleFileRead("/setup_sound.htm");
       #endif
-  });  
-  
+  });
+
    HTTP.on("/?setup_multilamp", HTTP_GET, []() {
      #ifndef USE_MULTIPLE_LAMPS_CONTROL
    HTTP.send(404, "text/plain", "Управление несколькими лампами отключено в прошивке");
@@ -484,7 +601,7 @@ void handle_eff_reset() {
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);    
     showWarning(CRGB::Blue, 2000U, 500U);                    // мигание синим цветом 2 секунды
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     HTTP.send(200, F("text/plain"), F("OK"));
@@ -580,7 +697,7 @@ void handle_eff_sel () {
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -638,7 +755,7 @@ void handle_eff () {
       MqttManager::needToPublish = true;
     }
     #endif
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -2230,8 +2347,27 @@ void handle_mqtt_period ()   {
     writeFile(F("config_mqtt.json"), configMQTT );
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
-
 #endif //USE_MQTT
+
+#if USE_BLYNK
+void handle_blynk_token() {
+  String token = HTTP.arg("blynk_token");
+  token.trim();
+  jsonWrite(configSetup, "blynk_token", token);
+  blynkToken = token;
+  saveConfig();
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_use_blynk() {
+  int en = HTTP.arg("use_blynk").toInt();
+  if (en != 0) en = 1;
+  jsonWrite(configSetup, "use_blynk", en);
+  blynkEnabled = (en != 0);
+  saveConfig();
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+#endif // USE_BLYNK
 
 // Статус кнопки
 void handle_button_status() {
@@ -2414,6 +2550,57 @@ void handle_mqtt_status() {
     String resp;
     serializeJson(doc, resp);
     HTTP.send(200, "application/json; charset=utf-8", resp);
+}
+
+void handle_blynk_status() {
+  DynamicJsonDocument doc(256);
+
+#if !USE_BLYNK
+  doc["status"] = "ОТКЛЮЧЕНО";
+  doc["fw"] = 0;
+  doc["enabled"] = 0;
+  doc["token_set"] = 0;
+  doc["configured"] = 0;
+  doc["connected"] = 0;
+
+#else
+  const bool tokenSet = (blynkToken.length() > 0);
+  const bool desiredEnabled = blynkEnabled;
+  bool configuredMatch = false;
+  if (blynkConfigured) {
+    configuredMatch = (blynkConfiguredEnabled == desiredEnabled) && (blynkConfiguredToken == blynkToken);
+  }
+  String status;
+  bool connected = false;
+  if (!desiredEnabled && !tokenSet) {
+    status = "НЕ ПОДКЛЮЧЕНО";
+  }
+  else if (desiredEnabled && !tokenSet) {
+    status = "НЕТ ТОКЕНА";
+  }
+  else if (desiredEnabled && tokenSet) {
+    if (!configuredMatch) {
+      status = "ТРЕБУЕТСЯ ПЕРЕЗАГРУЗКА";
+    } else {
+      connected = Blynk.connected();
+      status = connected ? "ПОДКЛЮЧЕНО" : "НЕ ПОДКЛЮЧЕНО";
+    }
+  }
+  else {
+    status = "НЕ ПОДКЛЮЧЕНО";
+  }
+
+  doc["status"] = status;
+  doc["fw"] = 1;
+  doc["enabled"] = desiredEnabled ? 1 : 0;
+  doc["token_set"] = tokenSet ? 1 : 0;
+  doc["configured"] = configuredMatch ? 1 : 0;
+  doc["connected"] = connected ? 1 : 0;
+#endif
+
+  String resp;
+  serializeJson(doc, resp);
+  HTTP.send(200, "application/json; charset=utf-8", resp);
 }
 
 // Статус OTA

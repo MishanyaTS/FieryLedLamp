@@ -1,4 +1,4 @@
-#ifdef USE_BLYNK
+#if USE_BLYNK
 
 #define CYCLE_DONT_OFF          (1U)          // Не отключать режим Цикл при выключении лампы = 1U, отключать = 0U
 #define CYCLE_TIMER             (60U)         // Интервал смены эффектов 60 секунд

@@ -105,7 +105,12 @@
 #include "EepromManager.h"
 #include "FavoritesManager.h"
 #include "TimerManager.h"
-#ifdef USE_BLYNK
+#if USE_BLYNK
+String blynkToken;
+bool blynkEnabled = false;
+bool blynkConfigured = false;
+String blynkConfiguredToken;
+bool blynkConfiguredEnabled = false;
  #ifdef ESP32_USED
   #include <BlynkSimpleEsp32.h>
  #else
@@ -247,8 +252,6 @@ bool manualsOff = false;
 
 int16_t offset = WIDTH;
 uint32_t scrollTimer = 0LL;
-
-unsigned long lastIRtime = 0;  // время последнего приёма ИК-сигнала
 
 uint8_t currentMode;
 bool loadingFlag = true;
@@ -396,11 +399,15 @@ uint32_t mem_timer;
  uint32_t IR_Code = 0x00000000;
  uint32_t IR_Repeat_Timer;
  uint32_t IR_Tick_Timer;
- uint32_t IR_Dgit_Enter_Timer;
- uint8_t Repeat; 
  uint8_t IR_Data_Ready;
- uint8_t Enter_Digit_1;
- uint8_t Enter_Number;
+ uint16_t Enter_Number;
+ uint8_t Enter_Digits_Count = 0;
+ unsigned long IR_Digit_Timer = 0;
+ unsigned long lastIRtime = 0;  // время последнего приёма ИК-сигнала
+
+#define IR_REPEAT_TIMER      500   // Время ожидания повтора
+#define IR_TICK_TIMER        100    // Время между автоповтором
+#define IR_DIGIT_ENTER_TIMER 2000   // Время для ввода второй цифры номера эффекта
 
  IRrecv irrecv(IR_RECEIVER_PIN);
  decode_results results;
@@ -551,6 +558,11 @@ void setup()  //================================================================
   LOG.print(F("\nСтарт файловой системы\n"));
   #endif
   FS_init();  //Запускаем файловую систему
+  
+  #if USE_IR_RECEIVER
+  IR_LoadConfigFromFile();
+  #endif
+  
   configSetup = readFile(F("config.json"), 2048);
   //Настраиваем и запускаем SSDP интерфейс
   #if GENERAL_DEBUG
@@ -562,6 +574,10 @@ void setup()  //================================================================
   LAMP_NAME = jsonRead(configSetup, "SSDP");
   AP_NAME = jsonRead(configSetup, "ssidAP");
   AP_PASS = jsonRead(configSetup, "passwordAP");
+  #if USE_BLYNK
+  blynkToken = jsonRead(configSetup, "blynk_token");
+  blynkEnabled = (jsonReadtoInt(configSetup, "use_blynk") != 0);
+  #endif
   Favorit_only = jsonReadtoInt(configSetup, "favorit");
   random_on = jsonReadtoInt(configSetup, "random_on");
   espMode = jsonReadtoInt(configSetup, "ESP_mode");
@@ -639,7 +655,7 @@ void setup()  //================================================================
     wasError("setup SetSquareWavePin");
     #endif
   #endif //USE_RTC
-  
+
   #if USE_MP3_PLAYER
   eff_volume = jsonReadtoInt(configSetup, "vol");
   eff_sound_on = (jsonReadtoInt(configSetup, "on_sound")==0)? 0 : eff_volume;
@@ -840,10 +856,15 @@ void setup()  //================================================================
     wifiMulti.addAP(main_ssid.c_str(), main_pass.c_str());
 
     delay (10);    
-    #ifdef USE_BLYNK
-    Blynk.config(USE_BLYNK, "blynk.tk", 8080);
+    #if USE_BLYNK
+    blynkConfiguredEnabled = blynkEnabled;
+    blynkConfiguredToken   = blynkToken;
+    blynkConfigured        = (blynkEnabled && blynkToken.length() > 0);
+    if (blynkConfigured) {
+      Blynk.config(blynkToken.c_str(), "blynk.tk", 8080);
+    }
     #endif
-  }     //if (espMode == 0U) {...} else {...
+  }
   
     #ifdef ESP32_USED
      esp_task_wdt_reset();
@@ -1152,14 +1173,11 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #if USE_TM1637
      if (millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
       tmr_clock = millis();                     // обновляем значение счетчика
-      if (inClockWeatherMode && showClock && DisplayFlag == 0) {
       dotFlag = !dotFlag;                       // инверсия флага
       boolean points[4] = {0,0,0,0};
       points[1] = dotFlag;
-      display.setSegmentPoints(points);
-      }
-
-    Display_Timer();
+      if (!DisplayFlag) display.setSegmentPoints(points); // выкл/выкл двоеточия 
+      Display_Timer();
    }
     if (dawnFlag == 1 || sunsetFlag == 1) {
       clockTicker_blink();
@@ -1203,13 +1221,18 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
         IR_Code = results.value;
         IR_Data_Ready = 1;
         irrecv.resume();
-      }
+        }
+
       if (millis() - IR_Tick_Timer > 100) {
         IR_Tick_Timer = millis();
         if (IR_Data_Ready) {
           IR_Receive_Button_Handle();
           IR_Data_Ready = 0;
         }
+      }
+      if (Enter_Digits_Count > 0 &&
+        millis() - IR_Digit_Timer > IR_DIGIT_ENTER_TIMER) {
+        Apply_Entered_Effect();
       }
   #endif  //USE_IR_RECEIVER
 
@@ -1246,7 +1269,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       ,espMode
       ))
   {
-    #ifdef USE_BLYNK
+    #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
     SetBrightness(modes[currentMode].Brightness);
@@ -1305,8 +1328,8 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   }
   #endif
 
-  #ifdef USE_BLYNK
-  if (espMode == 1U && WiFi.isConnected())
+  #if USE_BLYNK
+  if (blynkConfigured && espMode == 1U && WiFi.isConnected())
     Blynk.run();
   #endif
 

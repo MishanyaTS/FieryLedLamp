@@ -1,11 +1,11 @@
 #pragma once
 
-#define VERSION      " v6.1"
-#define CUR_VERSION  "FieryLedLamp v6.1"
+#define VERSION      " v6.2"
+#define CUR_VERSION  "FieryLedLamp v6.2"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
-//#define USE_BLYNK   ("token")                             // Раскомментируйте эту строку и вставьте токен из приложения Blynk https://community.alexgyver.ru/threads/nastrojka-programmy-blynk-dlja-fiery-led-lamp.7787/
+#define USE_BLYNK 1                                         // Использовать Blynk: 0 - нет, 1 - да
 
 // =============  МОДУЛИ  ========================================================================
 #define USE_BUTTON 1                                        // Использовать кнопку: 0 - нет, 1 - да
@@ -17,9 +17,9 @@
 
 // ===============================================================================================
 #define USE_WEATHER 1                                       // Использовать получение погоды: 0 - нет, 1 - да 
-#define USE_MULTIPLE_LAMPS_CONTROL 1                        // Использовать управление несколькими лампами: 0 - нет, 1 - да
+#define USE_MULTIPLE_LAMPS_CONTROL 0                        // Использовать управление несколькими лампами: 0 - нет, 1 - да
 #define USE_OTA 1                                           // Использовать обновление прошивки по воздуху: 0 - нет, 1 - да
-#define GENERAL_DEBUG 0                                     // Включить отладочные сообщения: 0 - нет, 1 - да
+#define GENERAL_DEBUG 1                                     // Включить отладочные сообщения: 0 - нет, 1 - да
 #define HEAP_SIZE_PRINT 0                                   // Вывод размера свободного ОЗУ: 0 - откл, 1 - вкл
 #define DISPLAY_IP_AT_START 1                               // Показать бегущей строкой IP-адрес при старте: 0 - нет, 1 - да
 
@@ -653,10 +653,10 @@ String writeFile(const String& fileName, String& strings ) {
   configFile.print(strings);
   //strings.printTo(configFile);
   configFile.close();
-  #if GENERAL_DEBUG
+  /*#if GENERAL_DEBUG
   LOG.print (F("\nСохранён файл "));
   LOG.println (fileName);
-  #endif  //GENERAL_DEBUG
+  #endif  //GENERAL_DEBUG*/
   return "Write sucsses";
 }
 void saveConfig (){

@@ -54,10 +54,17 @@ void Display_Timer (uint8_t argument)   {
         DisplayFlag = 0;
         if (timeSynched) clockTicker_blink ();                   // отображаем  время
         else display.displayByte(_dash, _dash, _dash, _dash);    // отображаем прочерки
-    }   
+    }  
 
 // Режим "ЧАСЫ / ПОГОДА"
 if (DisplayFlag == 0) {
+  #if (USE_WEATHER == 0)
+    showClock = true;
+    weatherErrActive = false;
+    clockTicker_blink();
+    return;
+  #else
+  #endif
   if (inClockWeatherMode) {
     // ===== ПЕРЕКЛЮЧЕНИЕ =====
     if (showClock) {

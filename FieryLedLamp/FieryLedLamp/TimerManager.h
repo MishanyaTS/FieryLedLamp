@@ -46,7 +46,7 @@ class TimerManager
         multiple_lamp_control ();
         #endif  //USE_MULTIPLE_LAMPS_CONTROL        
 
-//        #ifdef USE_BLYNK короче, раз в Блинке нет управления таймером, то и это мы поддерживать не будем
+//        #if USE_BLYNK короче, раз в Блинке нет управления таймером, то и это мы поддерживать не будем
 //        updateRemoteBlynkParams();
 //        #endif
       }
