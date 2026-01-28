@@ -297,6 +297,18 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   HTTP.on("/get_weather", HTTP_GET, []() {
   DynamicJsonDocument doc(1024);
 
+#if (USE_WEATHER == 0)
+  doc["text"] = "—";
+  doc["temp"] = -999;
+  doc["init"] = false;
+  doc["city"] = "";
+  doc["provider"] = "";
+  String out;
+  serializeJson(doc, out);
+  HTTP.send(200, "application/json", out);
+  return;
+#endif
+
   if (currentTemp > -999) {
     String source = preferYandex ? "Яндекс" : "OpenWeather";
     String text = source + ": " + String((int)round(currentTemp)) + "°C";
@@ -304,9 +316,10 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
       text += ", " + currentCondition;
     }
     doc["text"] = text;
-    doc["temp"] = round(currentTemp);
+    doc["temp"] = (int)round(currentTemp);
   } else {
     doc["text"] = "—";
+    doc["temp"] = -998;
   }
 
   doc["init"] = inClockWeatherMode;
@@ -2533,20 +2546,30 @@ void handle_multilamp_status() {
 // Статус MQTT
 void handle_mqtt_status() {
     DynamicJsonDocument doc(256);
-    String status;
+    String status = "ОТКЛЮЧЕНО";
+    bool enabled = false;
     bool connected = false;
+    bool configEnabled = false;
 
 #if USE_MQTT
-    connected = MqttManager::isConnected();
-    status = connected ? "ПОДКЛЮЧЕНО" : "НЕ ПОДКЛЮЧЕНО";
+    enabled = true;
+    String configMQTT = readFile(F("config_mqtt.json"), 512);
+    int mq_on = jsonReadtoInt(configMQTT, "mq_on");
+    configEnabled = (mq_on != 0);
+    if (!configEnabled) {
+      status = "НЕ ПОДКЛЮЧЕНО";
+      connected = false;
+    } else {
+      connected = MqttManager::isConnected();
+      status = connected ? "ПОДКЛЮЧЕНО" : "НЕ ПОДКЛЮЧЕНО";
+    }
 #else
     status = "ОТКЛЮЧЕНО";
 #endif
-
-    doc["status"]    = status;
-    doc["enabled"]   = !!USE_MQTT;
-    doc["connected"] = connected;
-
+    doc["status"]        = status;
+    doc["enabled"]       = enabled;
+    doc["connected"]     = connected;
+    doc["configEnabled"] = configEnabled;
     String resp;
     serializeJson(doc, resp);
     HTTP.send(200, "application/json; charset=utf-8", resp);

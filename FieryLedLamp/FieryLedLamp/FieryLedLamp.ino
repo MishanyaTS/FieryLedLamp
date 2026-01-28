@@ -1173,9 +1173,14 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #if USE_TM1637
      if (millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
       tmr_clock = millis();                     // обновляем значение счетчика
-      dotFlag = !dotFlag;                       // инверсия флага
       boolean points[4] = {0,0,0,0};
+      if (!DisplayFlag && (!inClockWeatherMode || showClock)) {
+      dotFlag = !dotFlag;                       // инверсия флага
       points[1] = dotFlag;
+      } else {
+      dotFlag = false;
+      points[1] = 0;
+   }
       if (!DisplayFlag) display.setSegmentPoints(points); // выкл/выкл двоеточия 
       Display_Timer();
    }
