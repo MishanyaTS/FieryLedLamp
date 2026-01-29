@@ -124,46 +124,40 @@ void User_setings ()  {
   });
   
 #if USE_IR_RECEIVER
-  HTTP.on("/ir_code", HTTP_GET, []() {
+  HTTP.on("/ir_set", HTTP_GET, []() {
+  if (!HTTP.hasArg("key")) {
+    HTTP.send(400, F("text/plain"), F("Missing key"));
+    return;
+  }
+  String key = HTTP.arg("key");
+  key.trim();
+  if (key.length() == 0) {
+    HTTP.send(400, F("text/plain"), F("Bad key"));
+    return;
+  }
   String configIR = readFile(F("config_ir.json"), 4096);
   if (configIR == "Failed" || configIR == "Large") {
     HTTP.send(500, F("text/plain"), F("IR config error"));
     return;
   }
-  jsonWrite(configIR, "on_off",    HTTP.arg("on_off").toInt());
-  jsonWrite(configIR, "mute",      HTTP.arg("mute").toInt());
-  jsonWrite(configIR, "prev",      HTTP.arg("prev").toInt());
-  jsonWrite(configIR, "next",      HTTP.arg("next").toInt());
-  jsonWrite(configIR, "cycle",     HTTP.arg("cycle").toInt());
-  jsonWrite(configIR, "eq",        HTTP.arg("eq").toInt());
-  jsonWrite(configIR, "time",      HTTP.arg("time").toInt());
-  jsonWrite(configIR, "vol_down",  HTTP.arg("vol_down").toInt());
-  jsonWrite(configIR, "vol_up",    HTTP.arg("vol_up").toInt());
-  jsonWrite(configIR, "ip",        HTTP.arg("ip").toInt());
-  jsonWrite(configIR, "br_up",     HTTP.arg("br_up").toInt());
-  jsonWrite(configIR, "br_down",   HTTP.arg("br_down").toInt());
-  jsonWrite(configIR, "sp_up",     HTTP.arg("sp_up").toInt());
-  jsonWrite(configIR, "sp_down",   HTTP.arg("sp_down").toInt());
-  jsonWrite(configIR, "sc_up",     HTTP.arg("sc_up").toInt());
-  jsonWrite(configIR, "sc_down",   HTTP.arg("sc_down").toInt());
-  jsonWrite(configIR, "fav_add",   HTTP.arg("fav_add").toInt());
-  jsonWrite(configIR, "fav_del",   HTTP.arg("fav_del").toInt());
-  jsonWrite(configIR, "rnd",       HTTP.arg("rnd").toInt());
-  jsonWrite(configIR, "def",       HTTP.arg("def").toInt());
-  jsonWrite(configIR, "fold_prev", HTTP.arg("fold_prev").toInt());
-  jsonWrite(configIR, "fold_next", HTTP.arg("fold_next").toInt());
-  jsonWrite(configIR, "d1", HTTP.arg("d1").toInt());
-  jsonWrite(configIR, "d2", HTTP.arg("d2").toInt());
-  jsonWrite(configIR, "d3", HTTP.arg("d3").toInt());
-  jsonWrite(configIR, "d4", HTTP.arg("d4").toInt());
-  jsonWrite(configIR, "d5", HTTP.arg("d5").toInt());
-  jsonWrite(configIR, "d6", HTTP.arg("d6").toInt());
-  jsonWrite(configIR, "d7", HTTP.arg("d7").toInt());
-  jsonWrite(configIR, "d8", HTTP.arg("d8").toInt());
-  jsonWrite(configIR, "d9", HTTP.arg("d9").toInt());
-  jsonWrite(configIR, "d0", HTTP.arg("d0").toInt());
-  writeFile(F("config_ir.json"), configIR);
-  IR_LoadConfigFromFile();   // сразу применяем
+  bool changed = false;
+  if (HTTP.hasArg("code")) {
+    uint32_t code = (uint32_t)HTTP.arg("code").toInt();
+    jsonWrite(configIR, key.c_str(), (int)code);
+    changed = true;
+  }
+  if (HTTP.hasArg("comment")) {
+    String c = HTTP.arg("comment");
+    c.trim();
+    if (c.length() > 32) c.remove(32);
+    String cKey = key + F("_comment");
+    jsonWrite(configIR, cKey.c_str(), c);
+    changed = true;
+  }
+  if (changed) {
+    writeFile(F("config_ir.json"), configIR);
+    IR_LoadConfigFromFile();   // apply now
+  }
   HTTP.send(200, F("text/plain"), F("OK"));
 });
 
@@ -296,14 +290,13 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
 
   HTTP.on("/get_weather", HTTP_GET, []() {
   DynamicJsonDocument doc(1024);
-
+  String out;
 #if (USE_WEATHER == 0)
   doc["text"] = "—";
   doc["temp"] = -999;
   doc["init"] = false;
   doc["city"] = "";
   doc["provider"] = "";
-  String out;
   serializeJson(doc, out);
   HTTP.send(200, "application/json", out);
   return;
@@ -326,7 +319,6 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   doc["city"] = weatherCity;
   doc["provider"] = actualYandex ? "yandex" : "openweather";
 
-  String out;
   serializeJson(doc, out);
   HTTP.send(200, "application/json", out);
 });
