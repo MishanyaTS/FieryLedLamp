@@ -410,6 +410,12 @@ void buttonTick()
   }
   #endif  // USE_MP3_PLAYER
 
+  // девятикратное нажатие
+  if (clickCount == 9U)                                     // вывод текущей погоды бегущей строкой
+  {
+    printWeather(thisTime, true, ONflag);
+  }
+
   // кнопка только начала удерживаться
   if (touch.isHolded()) // пускай для выключенной лампы удержание кнопки включает белую лампу
   {

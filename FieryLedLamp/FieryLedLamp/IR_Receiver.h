@@ -9,6 +9,7 @@ extern uint32_t IR_NEXT;
 extern uint32_t IR_CYCLE;
 extern uint32_t IR_EQ;
 extern uint32_t IR_TIME;
+extern uint32_t IR_WEATHER;
 extern uint32_t IR_VOL_DOWN;
 extern uint32_t IR_VOL_UP;
 extern uint32_t IR_IP;

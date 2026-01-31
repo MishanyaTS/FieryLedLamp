@@ -162,6 +162,7 @@ timerMinim timeTimer(3000);
 bool ntpServerAddressResolved = false;
 bool timeSynched = false;
 uint32_t lastTimePrinted = 0U;
+uint32_t lastWeatherPrinted = 0U;
 
 #if defined(USE_MANUAL_TIME_SETTING) || defined(GET_TIME_FROM_PHONE)
 time_t manualTimeShift;
@@ -305,6 +306,7 @@ uint8_t time_always;
 bool connect = false;
 uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
 uint8_t PRINT_TIME ;
+uint16_t PRINT_WEATHER ;
 uint8_t day_night = false;     // если день - true, ночь - false
 uint8_t save_file_changes =0;
 uint32_t timeout_save_file_changes;
@@ -582,6 +584,7 @@ void setup()  //================================================================
   random_on = jsonReadtoInt(configSetup, "random_on");
   espMode = jsonReadtoInt(configSetup, "ESP_mode");
   PRINT_TIME = jsonReadtoInt(configSetup, "print_time");
+  PRINT_WEATHER = jsonReadtoInt(configSetup, "print_weather");
   #if USE_BUTTON
    buttonEnabled = jsonReadtoInt(configSetup, "button_on");
   #endif

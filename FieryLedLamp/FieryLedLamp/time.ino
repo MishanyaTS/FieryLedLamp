@@ -107,6 +107,7 @@ if (stillUseNTP)
       thisTime = hour(currentLocalTime) * 60 + minute(currentLocalTime);
       uint32_t thisFullTime = hour(currentLocalTime) * 3600 + minute(currentLocalTime) * 60 + second(currentLocalTime);
       printTime(thisTime, false, ONflag);   // проверка текущего времени и его вывод (если заказан и если текущее время соответстует заказанному расписанию вывода)
+      printWeather(thisTime, false, ONflag); // периодический вывод погоды бегущей строкой
       if (last_minute != minute(currentLocalTime)
           #if USE_TM1637
             && !DisplayFlag

@@ -3,6 +3,7 @@ void User_setings ()  {
  HTTP.on("/favorit", handle_favorit);    // включить \ выключить переход кнопкой только по эффектам из выбранных в режиме Цикл и
  HTTP.on("/random_on", handle_random);  // случайных настроек эффектов в режиме цикл без сохранения в EEPROM
  HTTP.on("/print_time", handle_print_time); //Периодичность вывода времени бегущей строкой
+ HTTP.on("/print_weather", handle_print_weather); // Периодичность вывода погоды бегущей строкой
  HTTP.on("/button_on", handle_button_on);  // Вкл\Выкл кнопки лампы (дублирует в приложении, но на виду)
  HTTP.on("/ESP_mode", handle_ESP_mode); // Установка ESP Mode
  HTTP.on("/eff_reset", handle_eff_reset);  //сброс настроек эффектов по умолчанию
@@ -582,6 +583,14 @@ void handle_print_time() {
     bitSet (save_file_changes, 0);
   HTTP.send(200, F("text/plain"), F("OK"));
  }
+
+ void handle_print_weather() {
+  jsonWrite(configSetup, "print_weather", HTTP.arg("print_weather").toInt());
+  PRINT_WEATHER = jsonReadtoInt(configSetup, "print_weather");
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
  
 void handle_button_on() {
   jsonWrite(configSetup, "button_on", HTTP.arg("button_on").toInt());

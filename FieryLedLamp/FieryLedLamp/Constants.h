@@ -1,7 +1,7 @@
 #pragma once
 
-#define VERSION      " v6.2"
-#define CUR_VERSION  "FieryLedLamp v6.2"
+#define VERSION      " v6.3"
+#define CUR_VERSION  "FieryLedLamp v6.3"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да

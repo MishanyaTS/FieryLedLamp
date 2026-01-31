@@ -12,7 +12,7 @@ static bool IR_IsAllowedKey(const char* k) {
 
   const char* allowed[] = {
     "on_off","mute",
-    "prev","next","cycle","eq","time",
+    "prev","next","cycle","eq","time","weather",
     "vol_down","vol_up","ip",
     "br_up","br_down","sp_up","sp_down","sc_up","sc_down",
     "fav_add","fav_del","rnd","def",
@@ -125,6 +125,11 @@ void IR_Receive_Button_Handle() {  // Обработка принятых ком
   else if (IR_Code == IR_TIME) {
     if (IR_Data_Ready != 2) {
      printTime(thisTime, true, ONflag);
+    }
+  }
+  else if (IR_Code == IR_WEATHER) {
+    if (IR_Data_Ready != 2) {
+     printWeather(thisTime, true, ONflag);
     }
   }
   else if (IR_Code == IR_VOL_DOWN) {
@@ -700,6 +705,7 @@ uint32_t IR_NEXT = 0;
 uint32_t IR_CYCLE = 0;
 uint32_t IR_EQ = 0;
 uint32_t IR_TIME = 0;
+uint32_t IR_WEATHER = 0;
 uint32_t IR_VOL_DOWN = 0;
 uint32_t IR_VOL_UP = 0;
 uint32_t IR_IP = 0;
@@ -737,6 +743,7 @@ void IR_LoadConfigFromFile() {
   IR_CYCLE    = jsonReadtoInt(configIR, "cycle");
   IR_EQ       = jsonReadtoInt(configIR, "eq");
   IR_TIME     = jsonReadtoInt(configIR, "time");
+  IR_WEATHER  = jsonReadtoInt(configIR, "weather");
   IR_VOL_DOWN = jsonReadtoInt(configIR, "vol_down");
   IR_VOL_UP   = jsonReadtoInt(configIR, "vol_up");
   IR_IP       = jsonReadtoInt(configIR, "ip");

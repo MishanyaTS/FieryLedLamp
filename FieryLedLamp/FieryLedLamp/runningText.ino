@@ -103,7 +103,7 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
   {
     lastTimePrinted = thisTime;
     char stringTime[10U];                                   // буффер для выводимого текста, его длина должна быть НЕ МЕНЬШЕ, чем длина текста + 1
-    sprintf_P(stringTime, PSTR("<-%u:%02u->"), (uint8_t)((thisTime - thisTime % 60U) / 60U), (uint8_t)(thisTime % 60U));
+    sprintf_P(stringTime, PSTR("<'%u:%02u'>"), (uint8_t)((thisTime - thisTime % 60U) / 60U), (uint8_t)(thisTime % 60U));
     loadingFlag = true;
     
     if (!ONflag)
@@ -158,8 +158,6 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
 
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)        // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
     digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-    #endif
-    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
     digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
     #endif
     if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
@@ -176,6 +174,71 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
   #endif
 }
 
+void printWeather(uint32_t thisTime, bool onDemand, bool ONflag)
+{
+#if USE_WEATHER
+  if (currentTemp <= -999.0f) {
+    if (onDemand) showWarning(CRGB::Red, 4000U, 500U);
+    return;
+  }
+  if (PRINT_WEATHER == 0 && !onDemand) return;
+  CRGB letterColor = CRGB::Blue;
+  bool needToPrint = false;
+  if (PRINT_WEATHER >= 1U) {
+    if (thisTime % 60U == 0U) {
+      needToPrint = true;
+      letterColor = CRGB::Red;
+    } else if (thisTime % PRINT_WEATHER == 0U) {
+      needToPrint = true;
+      letterColor = CRGB::Blue;
+    }
+  }
+  if (onDemand) {
+    needToPrint = true;
+    letterColor = CRGB::White;
+  }
+  if (((ONflag || time_always) && needToPrint && thisTime != lastWeatherPrinted) || onDemand)
+  {
+    lastWeatherPrinted = thisTime;
+    char s[160];
+    int8_t t = (int8_t)round(currentTemp);
+    snprintf(s, sizeof(s), "<'%+d^C %s'>", (int)t, currentCondition.c_str());
+    loadingFlag = true;
+    if (!ONflag) {
+      FastLED.setBrightness(getBrightnessForPrintTime());
+      delay(1);
+    }
+    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
+      digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+    #endif
+    while (!fillString(s, letterColor, false)) {
+      parseUDP();
+      delay(1);
+      HTTP.handleClient();
+      #if USE_BUTTON
+        buttonTick();
+      #endif
+      #ifdef ESP32_USED
+        esp_task_wdt_reset();
+      #else
+        ESP.wdtFeed();
+      #endif
+    }
+    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
+      digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+    #endif
+
+    if (ColorTextFon & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))) {
+      FastLED.clear();
+      delay(1);
+      FastLED.show();
+    }
+    SetBrightness(modes[currentMode].Brightness);
+    loadingFlag = true;
+  }
+#endif // USE_WEATHER
+}
 
 uint8_t getBrightnessForPrintTime()     // определение яркости для вывода времени бегущей строкой в зависимости от  успешности синхронизации времени,
                                                                       // текущего времени суток, настроек дневного/ночного времени 

@@ -19,6 +19,7 @@
 "ESP_mode":0,
 "time":"13:31:13",
 "print_time":60,
+"print_weather":20,
 "button_on":1,
 "TimeOut":60,
 "time_always":1,
