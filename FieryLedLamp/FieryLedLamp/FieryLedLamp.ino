@@ -1045,7 +1045,7 @@ void setup()  //================================================================
 #if (USE_WEATHER == 1)
   weatherApiKey = jsonRead(configSetup, "openweather_key");
   yandexGeoId = jsonRead(configSetup, "yandex_geo");
-  if (yandexGeoId.length() == 0) yandexGeoId = "1091";
+  if (yandexGeoId.length() == 0) yandexGeoId = "";
   weatherCity = jsonRead(configSetup, "city");
   inClockWeatherMode = jsonReadtoInt(configSetup, "show_weather");
   preferYandex = (jsonReadtoInt(configSetup, "weather_source") == 0);
@@ -1378,165 +1378,182 @@ void printDateTime(const RtcDateTime& dt)
 
 #if (USE_WEATHER == 1)
 
-String buildWeatherDescription(String baseDesc, float windSpeed = 0, int weatherId = 0, 
-                               String provider = "", float pressureMm = 0) {
-  String desc = baseDesc;
+static inline String toLowerCopy(String s) { s.toLowerCase(); return s; }
 
-  bool hasRain = desc.indexOf("дождь") != -1 || desc.indexOf("ливен") != -1 || desc.indexOf("осадки") != -1;
-  bool hasSnow = desc.indexOf("снег") != -1;
-  bool hasThunder = desc.indexOf("гроза") != -1;
+String tempToRussianFeeling(float t) {
+  if (t <= -25) return "экстремальный мороз";
+  if (t <= -15) return "сильный мороз";
+  if (t <= -7)  return "мороз";
+  if (t <= 0)   return "морозно";
+  if (t <= 5)   return "холодно";
+  if (t <= 12)  return "прохладно";
+  if (t <= 18)  return "комфортно";
+  if (t <= 24)  return "тепло";
+  if (t <= 30)  return "жарко";
+  return "очень жарко";
+}
 
-  if (provider == "openweather") {
-    if (weatherId >= 200 && weatherId < 700) {
-      if (!hasRain && !hasSnow && !hasThunder) {
-        if (weatherId >= 200 && weatherId < 300) desc += ", гроза";
-        else if (weatherId >= 300 && weatherId < 400) desc += ", морось";
-        else if (weatherId >= 500 && weatherId < 600) desc += ", идёт дождь";
-        else if (weatherId >= 600 && weatherId < 700) desc += ", идёт снег";
-      }
-    }
+String normalizeCond(String s) {
+  s.trim();
+  if (!s.length()) return "";
+
+  String low = toLowerCopy(s);
+
+  if (low.indexOf('-') >= 0) return low;
+  if (low == "clear" || low == "sunny") return "clear";
+  if (low == "partly cloudy" || low == "partly_cloudy" || low == "partlycloudy") return "partly-cloudy";
+  if (low == "cloudy") return "cloudy";
+  if (low == "overcast") return "overcast";
+  if (low == "rain") return "rain";
+  if (low == "snow") return "snow";
+  if (low == "fog")  return "fog";
+  if (low == "mist") return "mist";
+  if (low == "haze") return "haze";
+  if (low == "smoke") return "smoke";
+  if (low == "dust") return "dust";
+  if (low == "sand") return "sand";
+  if (low == "ash")  return "ash";
+  if (low == "hail") return "hail";
+  if (low.indexOf("дожд") >= 0) return "rain";
+  if (low.indexOf("снег")  >= 0) return "snow";
+  if (low.indexOf("туман") >= 0) return "fog";
+  if (low.indexOf("смог")  >= 0) return "smoke";
+  if (low.indexOf("пасмур")>= 0) return "overcast";
+  if (low.indexOf("облач") >= 0) return "cloudy";
+  if (low.indexOf("ясн")   >= 0) return "clear";
+
+  return low;
+}
+String yandexIconToCond(String icon) {
+  icon.trim();
+  if (!icon.length()) return "";
+
+  String s = toLowerCopy(icon);
+  s.replace("-d", "");
+  s.replace("-n", "");
+
+  if (s.indexOf("ts") >= 0) return "thunderstorm";
+  if (s.indexOf("fg") >= 0) return "fog";
+  if (s.indexOf("sm") >= 0) return "smoke";
+  if (s.indexOf("gr") >= 0) return "hail";
+  if (s.indexOf("ra") >= 0) return "rain";
+  if (s.indexOf("sn") >= 0) return "snow";
+  if (s.indexOf("skc") >= 0) return "clear";
+  if (s.indexOf("bkn") >= 0) return "cloudy";
+  if (s.indexOf("ovc") >= 0) return "overcast";
+
+  return "";
+}
+
+String buildYandexRuFromCond(const String& cond, float temp) {
+  String desc;
+  if      (cond == "clear")         desc = "ясно";
+  else if (cond == "partly-cloudy") desc = "малооблачно";
+  else if (cond == "cloudy")        desc = "облачно";
+  else if (cond == "overcast")      desc = "пасмурно";
+  else                              desc = "";
+
+  if (cond == "smoke" || cond == "haze") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", смог";
+  } else if (cond == "fog" || cond == "mist") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", туман";
+  } else if (cond == "dust" || cond == "sand" || cond == "ash") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", пыльная мгла";
+  } else if (cond == "thunderstorm") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", гроза";
+  } else if (cond == "hail") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", град";
+  } else if (cond == "snow") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", идёт снег";
+  } else if (cond == "rain") {
+    if (!desc.length()) desc = "пасмурно";
+    desc += ", идёт дождь";
+  }
+
+  if (!desc.length()) {
+    desc = tempToRussianFeeling(temp);
   }
   return desc;
 }
 
-String getYandexRussianDescription(String engCond, float windSpeed, int precType, float precStrength, 
-                                   float temp, float humidity = 0, float pressure = 0) {
-  String desc = "";
+bool httpsGetToString(const char* host, const String& path, uint32_t timeoutMs, String& outPayload) {
+#if defined(ESP32_USED)
+  WiFiClientSecure client;
+  client.setInsecure();
+#else
+  BearSSL::WiFiClientSecure client;
+  client.setInsecure();
+#endif
 
-  bool hasCondition = (engCond != "" && engCond != "unknown" && engCond != "null");
+  if (!client.connect(host, 443)) return false;
+  client.print(String("GET ") + path + " HTTP/1.1\r\n"
+               "Host: " + host + "\r\n"
+               "User-Agent: FieryLedLamp\r\n"
+               "Accept: application/json\r\n"
+               "Accept-Encoding: identity\r\n"
+               "Connection: close\r\n\r\n");
 
-  if (hasCondition) {
-    if (engCond == "clear") desc = "ясно";
-    else if (engCond == "partly-cloudy") desc = "малооблачно";
-    else if (engCond == "cloudy") desc = "облачно";
-    else if (engCond == "overcast") desc = "пасмурно";
-    else if (engCond == "drizzle" || engCond == "light-rain") desc = "небольшой дождь";
-    else if (engCond == "rain") desc = "дождь";
-    else if (engCond == "moderate-rain") desc = "умеренный дождь";
-    else if (engCond == "heavy-rain") desc = "сильный дождь";
-    else if (engCond == "continuous-heavy-rain") desc = "продолжительный сильный дождь";
-    else if (engCond == "showers") desc = "ливень";
-    else if (engCond == "wet-snow") desc = "дождь со снегом";
-    else if (engCond == "light-snow") desc = "небольшой снег";
-    else if (engCond == "snow") desc = "снег";
-    else if (engCond == "snow-showers") desc = "снегопад";
-    else if (engCond == "hail") desc = "град";
-    else if (engCond == "thunderstorm") desc = "гроза";
-    else if (engCond == "thunderstorm-with-rain") desc = "гроза с дождём";
-    else if (engCond == "thunderstorm-with-hail") desc = "гроза с градом";
-    else desc = engCond;
-  } else {
-    if (temp <= -20) desc = "экстремальный мороз";     // FIX
-    else if (temp <= -10) desc = "сильный мороз";
-    else if (temp <= -5) desc = "мороз";
-    else if (temp <= 0) desc = "морозно";
-    else if (temp <= 5) desc = "холодно";
-    else if (temp <= 12) desc = "прохладно";
-    else if (temp <= 18) desc = "комфортно";
-    else if (temp <= 24) desc = "тепло";
-    else if (temp <= 30) desc = "жарко";
-    else desc = "очень жарко";
+  bool headersEnded = false;
+  uint32_t tmr = millis();
+  outPayload = "";
+
+  while (millis() - tmr < timeoutMs) {
+    while (client.available()) {
+      String line = client.readStringUntil('\n');
+      if (!headersEnded) {
+        if (line == "\r") headersEnded = true;
+      } else {
+        outPayload += line;
+      }
+      tmr = millis();
+    }
+    if (!client.connected() && !client.available()) break;
+    delay(1);
   }
 
-  // Осадки
-  if (precStrength > 0.0 && desc.indexOf("дождь") == -1 && desc.indexOf("снег") == -1) {
-    if (precType == 1) desc += ", идёт дождь";
-    else if (precType == 2) desc += ", идёт снег";
-    else if (precType == 3) desc += ", дождь со снегом";
-    else if (precType == 4) desc += ", град";
-  }
-
-  return desc;
+  client.stop();
+  return outPayload.length() > 0;
 }
 
 void updateWeather() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   bool success = false;
-  actualYandex = false;  // по умолчанию считаем, что использовали OpenWeather
+  actualYandex = false;
 
   if (preferYandex && yandexGeoId.length() > 0 && yandexGeoId != "0") {
     success = getWeatherFromYandex();
-    if (success) {
-      actualYandex = true;
-      LOG.println(F("Погода: Яндекс.Погода"));
-    } else {
-      LOG.println(F("Яндекс не ответил, переходим на OpenWeather"));
-    }
+    if (success) actualYandex = true;
   }
 
   if (!success && weatherApiKey.length() > 10 && weatherCity.length() > 0) {
     success = getWeatherFromOpenWeather();
-    if (success) {
-      actualYandex = false;
-      LOG.println(F("Погода: OpenWeather"));
-    }
+    if (success) actualYandex = false;
   }
 
   if (!success) {
     currentTemp = -999.0f;
     currentCondition = "";
     LOG.println(F("Погода: нет данных"));
-  } else if (currentTemp > -999.0f) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "На улице: %+.1f°C, %s", currentTemp, currentCondition.c_str());
-    LOG.println(buf);
+    return;
   }
+
+  char buf[96];
+  snprintf(buf, sizeof(buf), "На улице: %+.1f°C, %s", currentTemp, currentCondition.c_str());
+  LOG.println(buf);
 }
-
-// Яндекс.Погода
+// -------------------- Yandex --------------------
 bool getWeatherFromYandex() {
-  String url = "https://yandex.com/time/sync.json?geo=" + yandexGeoId + "&lang=ru";
+  String path = "/time/sync.json?geo=" + yandexGeoId + "&lang=ru";
 
-#if defined(ESP32_USED)
-  WiFiClientSecure client;
-  client.setInsecure();  // Игнорируем SSL-сертификаты
-  client.connect("yandex.com", 443);
-  if (!client.connected()) {
-    LOG.println(F("Не удалось подключиться к Yandex"));
-    return false;
-  }
-
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: yandex.com\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
-
-  String line;
-  String payload = "";
-  bool headersEnded = false;
-  while (client.connected()) {
-    line = client.readStringUntil('\n');
-    if (!headersEnded) {
-      if (line == "\r") headersEnded = true;
-    } else {
-      payload += line;
-    }
-  }
-  client.stop();
-
-#else
-  // ESP8266
-  String proxyUrl = "http://194.58.103.72/http2https.php?https://yandex.com/time/sync.json?geo=" + yandexGeoId + "&lang=ru";
-  WiFiClient client;
-  client.connect("194.58.103.72", 80);
-  if (!client.connected()) {
-    LOG.println(F("Не удалось подключиться к прокси"));
-    return false;
-  }
-
-  client.print(String("GET ") + proxyUrl + " HTTP/1.1\r\n" + "Host: 194.58.103.72\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
-
-  String line;
-  String payload = "";
-  bool headersEnded = false;
-  while (client.connected()) {
-    line = client.readStringUntil('\n');
-    if (!headersEnded) {
-      if (line == "\r") headersEnded = true;
-    } else {
-      payload += line;
-    }
-  }
-  client.stop();
-#endif
+  String payload;
+  if (!httpsGetToString("yandex.com", path, 8000, payload)) return false;
 
   #if defined(ESP32_USED)
   DynamicJsonDocument doc(4096);   // ESP32 OK
@@ -1544,71 +1561,38 @@ bool getWeatherFromYandex() {
   DynamicJsonDocument doc(2048);   // ESP8266
 #endif
 
-DeserializationError err = deserializeJson(doc, payload);
-if (!err) {
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) return false;
+
   JsonObject clock = doc["clocks"][yandexGeoId];
-  if (clock.containsKey("weather")) {
-    currentTemp = clock["weather"]["temp"].as<float>();
-    currentCondition = clock["weather"]["condition"] | "";
-    return true;
-  }
-}
-return false;
-}
+  if (!clock.containsKey("weather")) return false;
 
-// Openweather
+  JsonObject w = clock["weather"];
+  if (!w.containsKey("temp")) return false;
+
+  currentTemp = w["temp"].as<float>();
+
+  String cond = w["condition"] | "";
+  if (!cond.length()) cond = w["weather"] | "";
+  if (!cond.length()) cond = w["title"]  | "";
+  if (!cond.length()) cond = w["name"]   | "";
+  if (!cond.length()) {
+    String icon = w["icon"] | "";
+    cond = yandexIconToCond(icon);
+  }
+
+  cond = normalizeCond(cond);
+  currentCondition = buildYandexRuFromCond(cond, currentTemp);
+  return true;
+}
+// -------------------- OpenWeather --------------------
 bool getWeatherFromOpenWeather() {
-  String url = "https://api.openweathermap.org/data/2.5/weather?q=" + weatherCity + "&appid=" + weatherApiKey + "&units=metric&lang=ru";
+  String path = "/data/2.5/weather?q=" + weatherCity +
+                "&appid=" + weatherApiKey +
+                "&units=metric&lang=ru";
 
-#if defined(ESP32_USED)
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.connect("api.openweathermap.org", 443);
-  if (!client.connected()) {
-    LOG.println(F("Не удалось подключиться к OpenWeather"));
-    return false;
-  }
-
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.openweathermap.org\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
-
-  String line;
-  String payload = "";
-  bool headersEnded = false;
-  while (client.connected()) {
-    line = client.readStringUntil('\n');
-    if (!headersEnded) {
-      if (line == "\r") headersEnded = true;
-    } else {
-      payload += line;
-    }
-  }
-  client.stop();
-
-#else
-  // ESP8266
-  BearSSL::WiFiClientSecure client;
-  client.setInsecure();
-  client.connect("api.openweathermap.org", 443);
-  if (!client.connected()) {
-    LOG.println(F("Не удалось подключиться к OpenWeather"));
-    return false;
-  }
-
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.openweathermap.org\r\n" + "User-Agent: FieryLedLamp\r\n" + "Connection: close\r\n\r\n");
-
-  String line;
-  String payload = "";
-  bool headersEnded = false;
-  while (client.connected()) {
-    line = client.readStringUntil('\n');
-    if (!headersEnded) {
-      if (line == "\r") headersEnded = true;
-    } else {
-      payload += line;
-    }
-  }
-  client.stop();
-#endif
+  String payload;
+  if (!httpsGetToString("api.openweathermap.org", path, 8000, payload)) return false;
 
   #if defined(ESP32_USED)
   DynamicJsonDocument doc(2048);
@@ -1617,11 +1601,13 @@ bool getWeatherFromOpenWeather() {
 #endif
 
 DeserializationError err = deserializeJson(doc, payload);
-if (!err && doc["main"]["temp"]) {
+  if (err) return false;
+  if (!doc["main"]["temp"]) return false;
+
   currentTemp = doc["main"]["temp"].as<float>();
   currentCondition = doc["weather"][0]["description"] | "";
-  return true;
-}
-return false;
+  if (!currentCondition.length()) currentCondition = tempToRussianFeeling(currentTemp);
+
+return true;
 }
 #endif // USE_WEATHER == 1

@@ -2449,7 +2449,7 @@ void handle_rtc_status() {
   const char* status;
   bool connected = false;
 
-#if RTC_3231
+#if USE_RTC
   connected = true;
   status = "ВКЛЮЧЕН";
 #else

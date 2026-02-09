@@ -429,6 +429,13 @@ void clockTicker_blink()
     if (millis() - tmr_blink > 100) {
       tmr_blink = millis();
       display.setBrightness((DispBrightness/51U)>4 ? 7 : DispBrightness/51U , DispBrightness);
+        #if USE_WEATHER
+          if (!(inClockWeatherMode && !showClock)) {
+          display.displayClock(hours, last_minute);
+         }
+        #else
+          display.displayClock(hours, last_minute);
+        #endif
       if (DispBrightness >= 204) {
         aDirection = false;
       }
