@@ -197,7 +197,7 @@ void printWeather(uint32_t thisTime, bool onDemand, bool ONflag)
     needToPrint = true;
     letterColor = CRGB::White;
   }
-  if (((ONflag || time_always) && needToPrint && thisTime != lastWeatherPrinted) || onDemand)
+  if (((ONflag || weather_always) && needToPrint && thisTime != lastWeatherPrinted) || onDemand)
   {
     lastWeatherPrinted = thisTime;
     char s[160];

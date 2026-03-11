@@ -1,7 +1,7 @@
 #pragma once
 
-#define VERSION      " v6.3"
-#define CUR_VERSION  "FieryLedLamp v6.3"
+#define VERSION      " v6.4"
+#define CUR_VERSION  "FieryLedLamp v6.4"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -10,7 +10,8 @@
 // =============  МОДУЛИ  ========================================================================
 #define USE_BUTTON 1                                        // Использовать кнопку: 0 - нет, 1 - да
 #define BUTTON_IS_SENSORY 1                                 // Тип кнопки: 0 - механическая, 1 - сенсорная
-#define USE_TM1637 1                                        // Использовать дисплей TM1637: 0 - нет, 1 - да
+#define USE_TM1637 0                                        // Использовать дисплей TM1637: 0 - нет, 1 - да
+#define USE_TFT 1                                           // Использовать TFT ST7789: 0 - нет, 1 - да
 #define USE_IR_RECEIVER 1                                   // Использовать ИК-приёмник: 0 - нет, 1 - да
 #define USE_MP3_PLAYER 1                                    // Использовать MP3-плеер: 0 - нет, 1 - да
 #define USE_RTC 0                                           // Использовать модуль RTC (DS3231): 0 - нет, 1 - да
@@ -103,15 +104,23 @@
 #define MOSFET_PIN            (6U)                          // Пин MOSFET транзистора - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
 #define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
 #if USE_TM1637
-#define DIO                   (18U)                         // TM1637 display DIO pin
-#define CLK                   (21U)                         // TM1637 display CLK pin
+  #define DIO                   (18U)                       // TM1637 display DIO pin
+  #define CLK                   (21U)                       // TM1637 display CLK pin
+#endif
+#if USE_TFT
+  #define TFT_PIN_SCLK   (12U)                                // TFT SCL (SPI SCLK)
+  #define TFT_PIN_MOSI   (11U)                                // TFT SDA (SPI MOSI)
+  #define TFT_PIN_CS     (10U)                                // TFT CS
+  #define TFT_PIN_DC     (13U)                                // TFT DC
+  #define TFT_PIN_RST    (5U)                                 // TFT RES
+  #define TFT_PIN_BL     (4U)                                 // TFT BL
 #endif
 #if USE_MP3_PLAYER
-#define MP3_TX_PIN            (17U)                         // Определяет пин TX (RX на плеере) последовательного порта
-#define MP3_RX_PIN            (16U)                         // Определяет пин RX (TX на плеере) последовательного порта
+  #define MP3_TX_PIN            (17U)                       // Определяет пин TX (RX на плеере) последовательного порта
+  #define MP3_RX_PIN            (16U)                       // Определяет пин RX (TX на плеере) последовательного порта
 #endif
 #if USE_IR_RECEIVER
-#define IR_RECEIVER_PIN       (15U)                         // Пин ИК сенсора
+  #define IR_RECEIVER_PIN       (15U)                       // Пин ИК сенсора
 #endif
 
 #else
@@ -689,6 +698,12 @@ bool repeat_multiple_lamp_control = false;
 
 uint8_t eff_num_correct [MODE_AMOUNT]; //Корректировка номеров эффектов для разных языков
 void Display_Timer (uint8_t argument = 0);
+
+#if USE_TFT
+  void TFT_Init();
+  void TFT_Display_Timer(uint8_t argument = 0);
+  void TFT_LoopTick();
+#endif
 void timeTick();
 void Save_File_Changes();
 bool FileCopy (const String& SourceFile , const String& TargetFile); // Копирование файлов

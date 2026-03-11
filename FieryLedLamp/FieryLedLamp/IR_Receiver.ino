@@ -6,7 +6,6 @@ static uint32_t IR_LEARN_LAST   = 0;
 static char     IR_LEARN_KEY[24] = {0};
 static const uint32_t IR_LEARN_TIMEOUT_MS = 15000UL; // 15 сек
 
-
 static bool IR_IsAllowedKey(const char* k) {
   if (!k || !k[0]) return false;
 
@@ -402,6 +401,10 @@ void Prev_Next_eff(bool direction)   {
     DisplayFlag = 0;
     Display_Timer();
     #endif
+    #if USE_TFT
+      DisplayFlag = 0;
+      TFT_Display_Timer();
+    #endif
     if (random_on && FavoritesManager::FavoritesRunning)
         selectedSettings = 1U;
     #if USE_MQTT
@@ -451,7 +454,11 @@ void Bright_Up_Down(bool direction)   {
     #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Brightness);
-    #endif    
+    #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(modes[currentMode].Brightness);
+    #endif
     #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение яркости: %d\n"), modes[currentMode].Brightness);
     #endif
@@ -478,7 +485,11 @@ void Speed_Up_Down(bool direction)   {
     #if USE_TM1637
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Speed);
-    #endif    
+    #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(modes[currentMode].Speed);
+    #endif
     #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение скорости: %d\n"), modes[currentMode].Speed);
     #endif
@@ -506,6 +517,10 @@ void Scale_Up_Down(bool direction)   {
     DisplayFlag = 3;
     Display_Timer(modes[currentMode].Scale);
     #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(modes[currentMode].Scale);
+    #endif
     
     #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение масштаба: %d\n"), modes[currentMode].Scale);
@@ -530,6 +545,10 @@ void Volum_Up_Down (bool direction)   {
     DisplayFlag = 3;
     Display_Timer(eff_volume);
     #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(eff_volume);
+    #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -543,6 +562,9 @@ void Print_IP()   {
     if (espMode == 1U)
     {
       loadingFlag = true;
+      #if USE_TFT
+      TFT_ShowIP(WiFi.localIP().toString().c_str());
+      #endif
       while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
           delay(1);
           #ifdef ESP32_USED
@@ -551,6 +573,9 @@ void Print_IP()   {
            ESP.wdtFeed();
           #endif
           }
+      #if USE_TFT
+      TFT_HideIP();
+      #endif
       if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
         FastLED.clear();
         delay(1);
@@ -561,6 +586,9 @@ void Print_IP()   {
     else
     {
       loadingFlag = true;
+      #if USE_TFT
+      TFT_ShowIP(WiFi.softAPIP().toString().c_str());
+      #endif
       String str = "Точка доступа 192.168.4.1";
       while(!fillString(str.c_str(), CRGB::White, false)) {
           delay(1);
@@ -570,6 +598,9 @@ void Print_IP()   {
            ESP.wdtFeed();
           #endif
           }
+          #if USE_TFT
+      TFT_HideIP();
+      #endif
       if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
         FastLED.clear();
         delay(1);
@@ -598,6 +629,10 @@ void Folder_Next_Prev(bool direction)    {
     #if USE_TM1637
     DisplayFlag = 0;
     Display_Timer();
+    #endif
+    #if USE_TFT
+      DisplayFlag = 0;
+      TFT_Display_Timer();
     #endif
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
@@ -636,6 +671,10 @@ void IR_Equalizer()   {     // Устанавливаем эквалайзер
     DisplayFlag = 3;
     Display_Timer(Equalizer);
     #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(Equalizer);
+    #endif
     #endif  // USE_MP3_PLAYER
 }
 
@@ -663,6 +702,10 @@ void Digit_Handle(uint8_t digit) {
     #if USE_TM1637
       DisplayFlag = 3;
       Display_Timer(Enter_Number);
+    #endif
+    #if USE_TFT
+      DisplayFlag = 3;
+      TFT_Display_Timer(Enter_Number);
     #endif
     // если ввели 3 цифры — применяем сразу
     if (Enter_Digits_Count >= 3) {

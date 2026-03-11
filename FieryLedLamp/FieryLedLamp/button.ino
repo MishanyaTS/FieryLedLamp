@@ -298,6 +298,9 @@ void buttonTick()
       #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
       digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
       #endif
+      #if USE_TFT
+      TFT_ShowIP(WiFi.localIP().toString().c_str());
+      #endif
       while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
           delay(1);
           #ifdef ESP32_USED
@@ -306,6 +309,9 @@ void buttonTick()
            ESP.wdtFeed();
           #endif
           }
+      #if USE_TFT
+      TFT_HideIP();
+      #endif
       if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
         FastLED.clear();
         delay(1);
@@ -323,6 +329,9 @@ void buttonTick()
   else
     {
       loadingFlag = true;
+      #if USE_TFT
+      TFT_ShowIP(WiFi.softAPIP().toString().c_str());
+      #endif
       String str = "Точка доступа 192.168.4.1";
       while(!fillString(str.c_str(), CRGB::White, false)) {
           delay(1);
@@ -332,6 +341,9 @@ void buttonTick()
            ESP.wdtFeed();
           #endif
           }
+      #if USE_TFT
+      TFT_HideIP();
+      #endif
       if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
         FastLED.clear();
         delay(1);
@@ -449,7 +461,11 @@ if (touch.isStep()){
         #if USE_TM1637
         DisplayFlag = 3;
         Display_Timer(modes[currentMode].Brightness);
-        #endif    
+        #endif
+        #if USE_TFT
+          DisplayFlag = 3;
+          TFT_Display_Timer(modes[currentMode].Brightness);
+        #endif
 
         #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Новое значение яркости: %d\n"), modes[currentMode].Brightness);
@@ -475,7 +491,11 @@ if (touch.isStep()){
         #if USE_TM1637
         DisplayFlag = 3;
         Display_Timer(modes[currentMode].Speed);
-        #endif    
+        #endif
+        #if USE_TFT
+          DisplayFlag = 3;
+          TFT_Display_Timer(modes[currentMode].Speed);
+        #endif
         #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -497,6 +517,10 @@ if (touch.isStep()){
         #if USE_TM1637
         DisplayFlag = 3;
         Display_Timer(modes[currentMode].Scale);
+        #endif
+        #if USE_TFT
+          DisplayFlag = 3;
+          TFT_Display_Timer(modes[currentMode].Scale);
         #endif
         #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control = true;
@@ -709,22 +733,6 @@ if (touch.isStep()){
              ESP.wdtFeed();
             #endif
               showWarning(CRGB::Red, 500, 250U);
-          }
-          if(FileCopy (F("/default/index.json.gz"), F("/index.json.gz"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
-             showWarning(CRGB::Green, 500, 250U);
-          }
-          else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
-             showWarning(CRGB::Red, 500, 250U);
           }
           ESP.restart();
           break;

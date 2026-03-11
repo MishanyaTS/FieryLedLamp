@@ -4,6 +4,15 @@ void User_setings ()  {
  HTTP.on("/random_on", handle_random);  // случайных настроек эффектов в режиме цикл без сохранения в EEPROM
  HTTP.on("/print_time", handle_print_time); //Периодичность вывода времени бегущей строкой
  HTTP.on("/print_weather", handle_print_weather); // Периодичность вывода погоды бегущей строкой
+#if USE_TFT
+ HTTP.on("/tft_clock_color", handle_tft_clock_color);   // Цвет часов на TFT
+ HTTP.on("/tft_weather_color", handle_tft_weather_color); // Цвет погоды на TFT
+ HTTP.on("/tft_ticker_on", handle_tft_ticker_on); // Включить бегущаю строку на TFT
+ HTTP.on("/tft_ticker_color", handle_tft_ticker_color); // Цвет бегущаей строки на TFT
+ HTTP.on("/tft_ticker_speed", handle_tft_ticker_speed); // Скорость бегущаей строки на TFT
+ HTTP.on("/tft_ticker_period", handle_tft_ticker_period); // Период бегущаей строки на TFT
+ HTTP.on("/tft_ticker_text", handle_tft_ticker_text); // Период бегущаей строки на TFT
+#endif
  HTTP.on("/button_on", handle_button_on);  // Вкл\Выкл кнопки лампы (дублирует в приложении, но на виду)
  HTTP.on("/ESP_mode", handle_ESP_mode); // Установка ESP Mode
  HTTP.on("/eff_reset", handle_eff_reset);  //сброс настроек эффектов по умолчанию
@@ -92,6 +101,7 @@ void User_setings ()  {
  HTTP.on("/button_status", HTTP_GET, handle_button_status);
  HTTP.on("/ir_status", HTTP_GET, handle_ir_status);
  HTTP.on("/tm1637_status", HTTP_GET, handle_tm1637_status);
+ HTTP.on("/tft_status", HTTP_GET, handle_tft_status);
  HTTP.on("/rtc_status", HTTP_GET, handle_rtc_status);
  HTTP.on("/mp3_status", HTTP_GET, handle_mp3_status);
  HTTP.on("/multilamp_status", HTTP_GET, handle_multilamp_status);
@@ -262,7 +272,7 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
     #endif
   });
 
-  #if USE_TM1637
+  #if (USE_TM1637 || USE_TFT)
   HTTP.on("/save_display_times", HTTP_GET, []() {
   int clockVal   = HTTP.arg("clock").toInt();
   int weatherVal = HTTP.arg("weather").toInt();
@@ -592,6 +602,67 @@ void handle_print_time() {
   HTTP.send(200, F("text/plain"), F("OK"));
 }
  
+
+#if USE_TFT
+void handle_tft_clock_color() {
+  jsonWrite(configSetup, "tft_clock_color", HTTP.arg("tft_clock_color").toInt());
+  tft_clock_color = jsonReadtoInt(configSetup, "tft_clock_color");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_tft_weather_color() {
+  jsonWrite(configSetup, "tft_weather_color", HTTP.arg("tft_weather_color").toInt());
+  tft_weather_color = jsonReadtoInt(configSetup, "tft_weather_color");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_tft_ticker_on() {
+  jsonWrite(configSetup, "tft_ticker_on", HTTP.arg("tft_ticker_on").toInt());
+  tft_ticker_on = jsonReadtoInt(configSetup, "tft_ticker_on");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_tft_ticker_color() {
+  jsonWrite(configSetup, "tft_ticker_color", HTTP.arg("tft_ticker_color").toInt());
+  tft_ticker_color = jsonReadtoInt(configSetup, "tft_ticker_color");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_tft_ticker_speed() {
+  jsonWrite(configSetup, "tft_ticker_speed", HTTP.arg("tft_ticker_speed").toInt());
+  tft_ticker_speed = jsonReadtoInt(configSetup, "tft_ticker_speed");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}")); 
+}
+
+void handle_tft_ticker_period() {
+  jsonWrite(configSetup, "tft_ticker_period", HTTP.arg("tft_ticker_period").toInt());
+  tft_ticker_period = jsonReadtoInt(configSetup, "tft_ticker_period");
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("text/plain"), F("OK"));
+}
+  
+void handle_tft_ticker_text() {
+  String s = HTTP.arg("tft_ticker_text");
+  if (s.length() > 120) s.remove(120);
+  jsonWrite(configSetup, "tft_ticker_text", s);
+  (jsonRead(configSetup, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configSetup, "tft_ticker_text")).length() + 1);
+  timeout_save_file_changes = millis();
+  bitSet(save_file_changes, 0);
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}")); 
+}
+#endif
+
 void handle_button_on() {
   jsonWrite(configSetup, "button_on", HTTP.arg("button_on").toInt());
   #if USE_BUTTON
@@ -658,6 +729,9 @@ void handle_night_time ()  {
         SetBrightness(modes[currentMode].Brightness);
     #if USE_TM1637
     clockTicker_blink();
+    #endif
+    #if USE_TFT
+    TFT_ApplyBrightnessNow();
     #endif
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
@@ -2193,22 +2267,6 @@ void handle_reset_to_default ()   {
         #endif
         showWarning(CRGB::Red, 500, 250U);
     }
-    if(FileCopy (F("/default/index.json.gz"), F("/index.json.gz"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
-        showWarning(CRGB::Green, 500, 250U);
-    }
-    else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
-        showWarning(CRGB::Red, 500, 250U);
-    }
     HTTP.send(200, F("text/plain"), F("OK"));
     delay(100);
     ESP.restart();
@@ -2430,6 +2488,25 @@ void handle_tm1637_status() {
   bool connected = false;
 
 #if USE_TM1637
+  connected = true;
+  status = "ВКЛЮЧЕН";
+#else
+  status = "ОТКЛЮЧЕН";
+#endif
+
+  doc["connected"] = connected;
+  doc["status"] = status;
+  String response;
+  serializeJson(doc, response);
+  HTTP.send(200, "application/json; charset=utf-8", response);
+}
+
+void handle_tft_status() {
+  DynamicJsonDocument doc(256);
+  const char* status;
+  bool connected = false;
+
+#if USE_TFT
   connected = true;
   status = "ВКЛЮЧЕН";
 #else

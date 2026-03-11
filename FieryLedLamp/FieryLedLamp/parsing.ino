@@ -1237,22 +1237,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             #endif
             showWarning(CRGB::Red, 500, 250U);
         }
-        if(FileCopy (F("/default/index.json.gz"), F("/index.json.gz"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
-            showWarning(CRGB::Green, 500, 250U);
-        }
-        else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
-            showWarning(CRGB::Red, 500, 250U);
-        }
         delay(100);
         ESP.restart();
       }

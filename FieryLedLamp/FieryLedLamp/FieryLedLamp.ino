@@ -303,10 +303,20 @@ uint8_t Favorit_only;
 //uint32_t my_time;
 uint32_t my_timer;
 uint8_t time_always;
+uint8_t weather_always;
 bool connect = false;
 uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
 uint8_t PRINT_TIME ;
 uint16_t PRINT_WEATHER ;
+#if USE_TFT
+uint8_t tft_clock_color = 0;
+uint8_t tft_weather_color = 1;
+bool     tft_ticker_on = false;
+uint8_t  tft_ticker_color = 0;
+uint16_t tft_ticker_speed = 60;
+uint16_t tft_ticker_period = 60;
+char     TFTTickerText[128] = {0};
+#endif
 uint8_t day_night = false;     // если день - true, ночь - false
 uint8_t save_file_changes =0;
 uint32_t timeout_save_file_changes;
@@ -368,29 +378,33 @@ uint8_t mp3_delay;                       // Задержка между кома
 uint8_t send_sound = 1;                  // Передавать или нет сомнительным параметрам звука (папка,озвучивание_on/off,громкость)
 uint8_t send_eff_volume = 1;             // Передавать или нет озвучивания_on/off, громкость
 #endif  // USE_MP3_PLAYER
-#if USE_TM1637
+#if (USE_TM1637 || USE_TFT)
 uint32_t displaySwitchTimer = 0;
 uint32_t weatherErrTimer   = 0;
 uint32_t weatherErrBlinkTimer = 0;
 bool showClock = true;
 bool weatherErrActive = false;
 bool weatherErrBlinkState = true;
-uint32_t CLOCK_SHOW_INTERVAL = 10000;
+
+uint32_t CLOCK_SHOW_INTERVAL   = 10000;
 uint32_t WEATHER_SHOW_INTERVAL = 5000;
 const uint32_t WEATHER_ERR_TIME  = 3000;
 const uint32_t WEATHER_ERR_BLINK = 500;
+
+uint32_t DisplayTimer = 0;
+uint8_t  LastEffect   = 255;
+#if USE_MP3_PLAYER
+uint8_t  LastCurrentFolder = 255;
+#endif  // USE_MP3_PLAYER
+uint8_t  DisplayFlag  = 0;
+#endif
+#if USE_TM1637
 uint8_t DispBrightness = 1;          // +++ Яркость дисплея от 0 до 255(5 уровней яркости с шагом 51). 0 - дисплей погашен 
 bool dotFlag = false;                // +++ Флаг: в часах рисуется двоеточие или нет
 uint32_t tmr_clock = 0;              // +++ Таймер мигания разделителя часов на дисплее
 uint32_t tmr_blink = 0;              // +++ Таймер плавного изменения яркости дисплея
 TM1637Display display(CLK, DIO);     // +++ Подключаем дисплей
 bool aDirection = false;             // +++ Направление изменения яркости
-uint32_t DisplayTimer;               // Время отображения номера эффекта
-uint8_t LastEffect = 255;            // Последний Проигрываемый эффект
-uint8_t DisplayFlag=0;               // Флаг, показывающий, что отображается номер эффекта и папки
- #if USE_MP3_PLAYER
- uint8_t LastCurrentFolder = 255;    // Проигрываемая папка
- #endif  // USE_MP3_PLAYER
 #endif  //USE_TM1637
 
 #if HEAP_SIZE_PRINT
@@ -555,6 +569,12 @@ void setup()  //================================================================
   display.displayByte(_dash, _dash, _dash, _dash);          // +++ отображаем прочерки
 #endif
 
+  #if USE_TFT
+    LOG.println(F("Старт дисплея TFT ST7789"));
+    TFT_Init();
+    tftShowStartText();
+  #endif
+
    //File Fystem
   #if GENERAL_DEBUG  
   LOG.print(F("\nСтарт файловой системы\n"));
@@ -585,11 +605,23 @@ void setup()  //================================================================
   espMode = jsonReadtoInt(configSetup, "ESP_mode");
   PRINT_TIME = jsonReadtoInt(configSetup, "print_time");
   PRINT_WEATHER = jsonReadtoInt(configSetup, "print_weather");
+  #if USE_TFT
+  tft_clock_color = jsonReadtoInt(configSetup, "tft_clock_color");
+  tft_weather_color = jsonReadtoInt(configSetup, "tft_weather_color");
+  tft_ticker_on = jsonReadtoInt(configSetup, "tft_ticker_on");
+  tft_ticker_color = jsonReadtoInt(configSetup, "tft_ticker_color");
+  tft_ticker_speed = jsonReadtoInt(configSetup, "tft_ticker_speed");
+  tft_ticker_period = jsonReadtoInt(configSetup, "tft_ticker_period");
+  (jsonRead(configSetup, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configSetup, "tft_ticker_text")).length() + 1);
+  #endif
   #if USE_BUTTON
    buttonEnabled = jsonReadtoInt(configSetup, "button_on");
   #endif
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
   time_always = jsonReadtoInt(configSetup, "time_always");
+  #if USE_WEATHER
+  weather_always = jsonReadtoInt(configSetup, "weather_always");
+  #endif
   (jsonRead(configSetup, "run_text")).toCharArray (TextTicker, (jsonRead(configSetup, "run_text")).length()+1);
   NIGHT_HOURS_START = 60U * jsonReadtoInt(configSetup, "night_time");
   NIGHT_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "night_bright");
@@ -812,6 +844,9 @@ void setup()  //================================================================
     delay(100);
     LOG.print(F("AP запущен: "));
     LOG.println(WiFi.softAPIP());
+    #if USE_TFT
+    TFT_ShowIP(WiFi.softAPIP().toString().c_str());
+    #endif
     connect = true;  
     #if DISPLAY_IP_AT_START
         loadingFlag = true;
@@ -839,6 +874,9 @@ void setup()  //================================================================
       #endif
         loadingFlag = true;
       #endif  // DISPLAY_IP_AT_START
+      #if USE_TFT
+      TFT_HideIP();
+#endif
       delay (100);
   } else {
     // Режим клиента
@@ -911,6 +949,9 @@ void setup()  //================================================================
     LOG.println(F("\nWiFi подключён!"));
     LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
     LOG.print(F("IP: ")); LOG.println(WiFi.localIP());
+      #if USE_TFT
+      TFT_ShowIP(WiFi.localIP().toString().c_str());
+      #endif
     LOG.print(F("RSSI: ")); LOG.print(WiFi.RSSI()); LOG.println(F(" dBm"));
     connect = true;
     #if DISPLAY_IP_AT_START
@@ -939,6 +980,9 @@ void setup()  //================================================================
       #endif
         loadingFlag = true;
       #endif  // DISPLAY_IP_AT_START
+      #if USE_TFT
+      TFT_HideIP();
+      #endif
   }
   SSDP_init();
 
@@ -1031,8 +1075,8 @@ void setup()  //================================================================
     IR_Repeat_Timer = millis();
   #endif  //USE_IR_RECEIVER
 
-  //TM1637
-#if USE_TM1637
+  //TM1637 || TFT
+#if (USE_TM1637 || USE_TFT)
     uint32_t tmpClock   = jsonReadtoInt(configSetup, "clock_time");
     uint32_t tmpWeather = jsonReadtoInt(configSetup, "weather_time");
     if (tmpClock < 3)   tmpClock = 10;
@@ -1191,6 +1235,10 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       clockTicker_blink();
     }
   #endif  //USE_TM1637
+
+  #if USE_TFT
+    TFT_LoopTick();
+  #endif
   
   #if USE_MP3_PLAYER
   switch (mp3_player_connect){
