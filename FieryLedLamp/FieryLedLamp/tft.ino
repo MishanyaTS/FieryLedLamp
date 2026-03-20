@@ -202,20 +202,29 @@ static void tftClear() {
 static void tftDrawClock(bool colonOn) {
   char buf[6];
   snprintf(buf, sizeof(buf), "%02d%c%02d", hours, colonOn ? ':' : ' ', last_minute);
-
+  String s = String(buf);
   tft.setTextColor(tftColorFromId(tft_clock_color), TFT_BLACK);
   tft.setTextFont(7);
   tft.setTextSize(2);
-  tft.setCursor(20, 35);
-  tft.print(String(buf));
+  int w = tft.textWidth(s);
+  int h = tft.fontHeight();
+  int x = (tft.width()  - w) / 2;
+  int y = (tft.height() - h) / 2;
+  tft.setCursor(x, y);
+  tft.print(s);
 }
 
 static void tftDrawDashes() {
+  String s = "--:--";
   tft.setTextColor(tftColorFromId(tft_clock_color), TFT_BLACK);
   tft.setTextFont(7);
   tft.setTextSize(2);
-  tft.setCursor(25, 30);
-  tft.print("--:--");
+  int w = tft.textWidth(s);
+  int h = tft.fontHeight();
+  int x = (tft.width()  - w) / 2;
+  int y = (tft.height() - h) / 2;
+  tft.setCursor(x, y);
+  tft.print(s);
 }
 
 static void tftDrawWeather() {
@@ -223,17 +232,42 @@ static void tftDrawWeather() {
   if (t < -99) t = -99;
   if (t >  99) t =  99;
 
-  tft.setTextColor(tftColorFromId(tft_weather_color), TFT_BLACK);
+  String tempStr = String(t);
+  const char* unitStr = "°C";
+  const int gap = 4;
   tft.setTextFont(7);
   tft.setTextSize(2);
-  tft.setCursor(20, 30);
-  tft.print(t);
+  int tempW = tft.textWidth(tempStr);
+  int tempH = tft.fontHeight();
+
+  tft.setTextFont(1);
+  tft.setTextSize(6);
+  int unitW = tft.textWidth(unitStr);
+  int tempX = (tft.width()  - tempW) / 2;
+  int tempY = (tft.height() - tempH) / 2;
+  int unitX = tempX + tempW + gap;
+  int overflow = (unitX + unitW) - tft.width();
+  
+  if (overflow > 0) {
+    tempX -= overflow;
+    unitX -= overflow;
+  }
+  if (tempX < 0) {
+    tempX = 0;
+    unitX = tempX + tempW + gap;
+  }
+
+  tft.setTextFont(7);
+  tft.setTextSize(2);
+  tft.setTextColor(tftColorFromId(tft_weather_color), TFT_BLACK);
+  tft.setCursor(tempX, tempY);
+  tft.print(tempStr);
 
   tft.setTextFont(1);
   tft.setTextSize(6);
   tft.setTextColor(tftColorFromId(tft_weather_color), TFT_BLACK);
-  tft.setCursor(225, 25);
-  tft.print("°C");
+  tft.setCursor(unitX, tempY);
+  tft.print(unitStr);
 }
 
 static void tftDrawWeatherErr(bool blinkOn) {
@@ -260,15 +294,22 @@ static void tftDrawEffect(uint16_t effIndex) {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextFont(6);
   tft.setTextSize(2);
-  tft.setCursor(80, 55);
-  tft.print((int)effIndex);
+
+  String s = String((int)effIndex);
+  int x = (tft.width() - tft.textWidth(s)) / 2;
+  tft.setCursor(x, 55);
+  tft.print(s);
 }
 
 static void tftDrawValue(uint8_t v) {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextFont(7);
   tft.setTextSize(2);
-  tft.setCursor(80, 30);
+  int w = tft.textWidth(String(v));
+  int h = tft.fontHeight();
+  int x = (tft.width()  - w) / 2;
+  int y = (tft.height() - h) / 2;
+  tft.setCursor(x, y);
   tft.print(String(v));
 }
 
@@ -282,8 +323,10 @@ static void tftDrawIP(const char* ip) {
   tft.setTextFont(6);
   tft.setTextSize(1);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(10, 85);
-  tft.print(ip);
+  String ipStr = String(ip);
+  int ipX = (tft.width() - tft.textWidth(ipStr)) / 2;
+  tft.setCursor(ipX, 85);
+  tft.print(ipStr);
 }
 
 void tftShowStartText() {
@@ -291,8 +334,11 @@ void tftShowStartText() {
   tft.setTextFont(2);
   tft.setTextSize(3);
   tft.setTextColor(TFT_WHITE);
-  tft.setCursor(20, 60);
-  tft.print("Fiery Led Lamp");
+  String s = "Fiery Led Lamp";
+  int x = (tft.width()  - tft.textWidth(s)) / 2;
+  int y = (tft.height() - tft.fontHeight()) / 2;
+  tft.setCursor(x, y);
+  tft.print(s);
 }
 // ------------------- API -------------------
 void TFT_Init() {
@@ -372,7 +418,7 @@ if (tftTickerActive) return;
     tftLastMode = currentMode;
     uint8_t n;
     for (n = 0; n < MODE_AMOUNT; n++) {
-      if (eff_num_correct[n] == currentMode) break;
+      if (n == currentMode) break;
     }
     tftEffIndex = n;
     tftEffectShowTmr = millis();

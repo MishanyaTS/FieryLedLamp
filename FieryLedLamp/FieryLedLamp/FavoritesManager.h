@@ -54,7 +54,7 @@ class FavoritesManager
 
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       {
-        itoa(FavoriteModes[eff_num_correct[i]], buff, 10);
+        itoa(FavoriteModes[i], buff, 10);
         strcat(statusText, buff);
         if (i < MODE_AMOUNT - 1) strcat_P(statusText, PSTR(" "));
         buff[0] = '\0';
@@ -75,7 +75,7 @@ class FavoritesManager
       UseSavedFavoritesRunning = getUseSavedFavoritesRunning(statusText);
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       {
-        FavoriteModes[eff_num_correct[i]] = getModeOnOff(statusText, i);
+        FavoriteModes[i] = getModeOnOff(statusText, i);
       }
 #ifdef USE_SHUFFLE_FAVORITES //пускай список воспроизведения перемешается, раз список избранного изменился
       shuffleCurrentIndex = MODE_AMOUNT;
@@ -292,21 +292,12 @@ class FavoritesManager
     static uint8_t getNextFavoriteMode(uint8_t* currentMode)  // возвращает следующий (случайный) включенный в избранные эффект
     {
       uint8_t result = *currentMode;
-      
-      for (uint8_t n = 0; n < MODE_AMOUNT; n++)
-      {
-          if (eff_num_correct[n] == result)
-          {
-              result = n;
-              break;
-          }
-      }
-      
+
       for (uint8_t tryNo = 0; tryNo <= random(0, MODE_AMOUNT); tryNo++)// случайное количество попыток определения следующего эффекта; без этого будет выбран следующий (избранный) по порядку после текущего
       {
         for (uint8_t i = (result + 1); i <= (result + MODE_AMOUNT); i++)
         {
-          if (FavoriteModes[eff_num_correct[i < MODE_AMOUNT ? i : i - MODE_AMOUNT]] > 0)
+          if (FavoriteModes[i < MODE_AMOUNT ? i : i - MODE_AMOUNT] > 0)
           {
             result = i < MODE_AMOUNT ? i : i - MODE_AMOUNT;
             break;
@@ -314,7 +305,7 @@ class FavoritesManager
         }
 		if (!rndCycle) break;
       }
-      return eff_num_correct[result];
+      return result;
     }
 #endif
 

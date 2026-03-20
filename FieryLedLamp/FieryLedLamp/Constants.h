@@ -1,7 +1,7 @@
 #pragma once
 
-#define VERSION      " v6.4"
-#define CUR_VERSION  "FieryLedLamp v6.4"
+#define VERSION      " v6.5"
+#define CUR_VERSION  "FieryLedLamp v6.5"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -696,7 +696,6 @@ void multiple_lamp_control ();
 bool repeat_multiple_lamp_control = false;
 #endif  //USE_MULTIPLE_LAMPS_CONTROL
 
-uint8_t eff_num_correct [MODE_AMOUNT]; //Корректировка номеров эффектов для разных языков
 void Display_Timer (uint8_t argument = 0);
 
 #if USE_TFT

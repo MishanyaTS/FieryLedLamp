@@ -1,5 +1,7 @@
 void User_setings ()  {
     
+ BackupRestoreInit();
+ 
  HTTP.on("/favorit", handle_favorit);    // включить \ выключить переход кнопкой только по эффектам из выбранных в режиме Цикл и
  HTTP.on("/random_on", handle_random);  // случайных настроек эффектов в режиме цикл без сохранения в EEPROM
  HTTP.on("/print_time", handle_print_time); //Периодичность вывода времени бегущей строкой
@@ -37,6 +39,7 @@ void User_setings ()  {
  HTTP.on("/Power", handle_Power);          // устройство вкл/выкл
  HTTP.on("/summer_time", handle_summer_time);  //Переход на летнее время 1 - да , 0 - нет
  HTTP.on("/time_always", handle_time_always);     // Выводить или нет время бегущей строкой(если задано) на не активной лампе
+ HTTP.on("/weather_always", handle_weather_always);     // Выводить или нет погоду бегущей строкой(если задано) на не активной лампе
  HTTP.on("/timeZone", handle_time_zone);    // Установка смещения времени относительно GMT.
  HTTP.on("/alarm", handle_alarm);   // Установка будильника "рассвет"
  HTTP.on("/sunset", handle_sunset);   // Установка заката
@@ -83,7 +86,6 @@ void User_setings ()  {
  HTTP.on("/cur_lim", handle_current_limit);  // выбор лимита тока матрицы
  HTTP.on("/m_t", handle_matrix_tipe);        // выбор типа матрицы
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
- HTTP.on("/lang", handle_lang);  // 
  HTTP.on("/ssdp", handle_ssdp);  // Имя лампы
  HTTP.on("/res_to_def", handle_reset_to_default);  // Сброс всех настроек к "заводским"
  HTTP.on("/toe", handle_runing_text_over_effects );  // Выводить бегущую строку поверх эффектов
@@ -771,7 +773,7 @@ void handle_ntp ()  {
 void handle_eff_sel () {
     uint8_t temp = (HTTP.arg("eff_sel").toInt());
     jsonWrite(configSetup, "eff_sel", temp);
-    currentMode = eff_num_correct[temp];
+    currentMode = temp;
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);
@@ -803,11 +805,11 @@ void handle_eff () {
             do 
             {
               if (++temp >= MODE_AMOUNT) temp = 0;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
             } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
             if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
               if (++temp >= MODE_AMOUNT) temp = 0;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
           }
           else
             if (++temp >= MODE_AMOUNT) temp = 0;
@@ -819,16 +821,16 @@ void handle_eff () {
             do
             {
               if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
             } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
             if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
               if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
           }
           else 
             if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
       }
-    currentMode = eff_num_correct[temp];
+    currentMode = temp;
     jsonWrite(configSetup, "eff_sel", temp);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
@@ -1094,6 +1096,14 @@ void handle_summer_time() {
 void handle_time_always() {
     jsonWrite(configSetup, "time_always", HTTP.arg("time_always").toInt());
     time_always = jsonReadtoInt(configSetup, "time_always");
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+ }
+
+ void handle_weather_always() {
+    jsonWrite(configSetup, "weather_always", HTTP.arg("weather_always").toInt());
+    weather_always = jsonReadtoInt(configSetup, "weather_always");
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("text/plain"), F("OK"));
@@ -2096,23 +2106,6 @@ void handle_matrix_orientation ()   {
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
-void  handle_lang ()   {
-    jsonWrite(configSetup, "lang", HTTP.arg("lang"));
-    saveConfig();
-    Lang_set();      
-    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
-}
-
-void Lang_set ()   {      
-    String Name = "correct." + jsonRead (configSetup, "lang") + ".json";
-    String Correct = readFile(Name, 2048);
-    for ( uint8_t n=0; n< MODE_AMOUNT; n++)
-    {
-        eff_num_correct[n] = jsonReadtoInt (Correct, String(n));
-        if (eff_num_correct[n] == currentMode) jsonWrite(configSetup, "eff_sel", n);
-    } 
-}
-
 void handle_reset_to_default ()   {
     LOG.println("\n*** Reset to Default ***");
     showWarning(CRGB::Red, 500, 250U);
@@ -2458,8 +2451,6 @@ void handle_button_status() {
   jsonWrite(configSetup, "button_status", "ОТКЛЮЧЕНО");
   doc["button_status"] = "ОТКЛЮЧЕНО";
 #endif
-
-  saveConfig(); 
   serializeJson(doc, response);
   HTTP.send(200, "application/json; charset=utf-8", response);
 }
@@ -2758,8 +2749,7 @@ bool FileCopy (const String& SourceFile , const String& TargetFile)   {
 void EffectList (const String& efflist )   {
     String effList = efflist;
     effList.reserve(17);
-    effList += jsonRead (configSetup, "lang");
-    effList += F(".ini");
+    effList += F("ru.ini");
     File R_File = LittleFS.open ( effList, "r" );
     if (!R_File) LOG.println (F("Ошибка. Файл списка эффектов для передачи приложению не найден!"));
     String EffList = R_File.readString();

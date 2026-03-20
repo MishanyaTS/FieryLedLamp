@@ -5,11 +5,7 @@ void Display_Timer (uint8_t argument)   {
         LastEffect = currentMode;
         DisplayTimer = millis();
         DisplayFlag = 1;
-        uint8_t n;
-        for (n = 0; n < MODE_AMOUNT; n++)
-        {
-            if (eff_num_correct[n] == currentMode) break;
-        }
+        uint8_t n = currentMode;
         if (n < 100) {
         display.point(1);
         display.displayByte(_E_, _F_, _empty, _empty);               // отображаем EF

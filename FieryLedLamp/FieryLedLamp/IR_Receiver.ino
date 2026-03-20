@@ -363,11 +363,11 @@ void Prev_Next_eff(bool direction)   {
             do 
             {
               if (++temp >= MODE_AMOUNT) temp = 0;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
             } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
             if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
               if (++temp >= MODE_AMOUNT) temp = 0;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
           }
           else
             if (++temp >= MODE_AMOUNT) temp = 0;
@@ -379,16 +379,16 @@ void Prev_Next_eff(bool direction)   {
             do
             {
               if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
             } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
             if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
               if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-              currentMode = eff_num_correct[temp];
+              currentMode = temp;
           }
           else 
             if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
       }
-    currentMode = eff_num_correct[temp];
+    currentMode = temp;
     jsonWrite(configSetup, "eff_sel", temp);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
@@ -721,7 +721,7 @@ void Apply_Entered_Effect() {
         Enter_Number = 0;
         return;
     }
-    currentMode = eff_num_correct[Enter_Number];
+    currentMode = Enter_Number;
     jsonWrite(configSetup, "eff_sel", Enter_Number);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);

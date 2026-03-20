@@ -146,6 +146,9 @@ RtcDateTime timeToSet;
 
 CRGB leds[NUM_LEDS];
 WiFiUDP Udp;
+bool apFallbackActive = false;
+uint32_t apFallbackStartMs = 0;
+uint32_t lastRouterRetryMs = 0;
 
 #ifdef USE_NTP
 WiFiUDP ntpUDP;
@@ -634,7 +637,6 @@ void setup()  //================================================================
   SpeedRunningText = jsonReadtoInt(configSetup, "spt");      // Скорость бегущей строки
   ColorRunningText = jsonReadtoInt(configSetup, "sct");      // Цвет бегущей строки
   ColorTextFon = jsonReadtoInt(configSetup, "ctf");          // Выводить бегущую строку на цветном фоне
-  jsonWrite(configSetup, "ver", VERSION);                // Версия ПО
   AutoBrightness = jsonReadtoInt(configSetup, "auto_bri");   // Автоматическое понижение яркости on/off
   #ifdef USE_NTP
   (jsonRead(configSetup, "ntp")).toCharArray (NTP_ADDRESS, (jsonRead(configSetup, "ntp")).length()+1);
@@ -721,18 +723,6 @@ void setup()  //================================================================
   #endif
   }
   {
-    String Name = F("correct.");
-    Name.reserve(17);
-    Name += jsonRead (configSetup, "lang");
-    Name += F(".json");
-    String Correct = readFile(Name, 2048);
-    for ( uint8_t n=0; n< MODE_AMOUNT; n++)
-    {
-        eff_num_correct[n] = jsonReadtoInt (Correct, String(n));
-    }
-  }
-
-  {
   String configIP = readFile(F("config_ip.json"), 512);
   use_static_ip = jsonReadtoInt(configSetup, "s_IP");
   Static_IP.fromString(jsonRead(configIP, "ip"));
@@ -785,7 +775,7 @@ void setup()  //================================================================
   else
       ONflag = jsonReadtoInt (configSetup, "Power");  // Чтение состояния лампы вкл/выкл,текущий эффект,яркость,скорость,масштаб
 
-  currentMode = eff_num_correct[jsonReadtoInt (configSetup, "eff_sel")];
+  currentMode = jsonReadtoInt (configSetup, "eff_sel");
   modes[currentMode].Brightness = jsonReadtoInt (configSetup, "br");
   modes[currentMode].Speed = jsonReadtoInt (configSetup, "sp");
   modes[currentMode].Scale = jsonReadtoInt (configSetup, "sc");
@@ -884,71 +874,109 @@ void setup()  //================================================================
     String main_pass = jsonRead(configSetup, "password");
     if (main_ssid.length() == 0) {
       LOG.println(F("SSID не задан → переход в AP"));
-      espMode = 0;
-      jsonWrite(configSetup, "ESP_mode", 0);
-      saveConfig();
-      ESP.restart();
-    }
-    else {
-    if(use_static_ip)
-    {  
-        WiFi.config(Static_IP, Gateway, Subnet, DNS1, DNS2); // Конфигурация под статический IP Address
-    }
-    wifiMulti.addAP(main_ssid.c_str(), main_pass.c_str());
-
-    delay (10);    
-    #if USE_BLYNK
-    blynkConfiguredEnabled = blynkEnabled;
-    blynkConfiguredToken   = blynkToken;
-    blynkConfigured        = (blynkEnabled && blynkToken.length() > 0);
-    if (blynkConfigured) {
-      Blynk.config(blynkToken.c_str(), "blynk.tk", 8080);
-    }
-    #endif
-  }
-  
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
-
-    bool wifi_multi_enabled = jsonReadtoInt(configSetup, "wifi_multi");
-    if (wifi_multi_enabled) {
-      String ssid2 = jsonRead(configSetup, "ssid2");
-      String pass2 = jsonRead(configSetup, "password2");
-      String ssid3 = jsonRead(configSetup, "ssid3");
-      String pass3 = jsonRead(configSetup, "password3");
-      if (ssid2.length() > 0) {
-        wifiMulti.addAP(ssid2.c_str(), pass2.c_str());
-        LOG.printf_P(PSTR("Добавлена сеть 2: %s\n"), ssid2.c_str());
+      WiFi.mode(WIFI_AP);
+      if (sizeof(AP_STATIC_IP)) {
+        WiFi.softAPConfig(
+          IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]),
+          IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),
+          IPAddress(255, 255, 255, 0));
       }
-      if (ssid3.length() > 0) {
-        wifiMulti.addAP(ssid3.c_str(), pass3.c_str());
-        LOG.printf_P(PSTR("Добавлена сеть 3: %s\n"), ssid3.c_str());
+      WiFi.softAP(AP_NAME.c_str(), AP_PASS.c_str());
+      delay(100);
+      LOG.print(F("AP запущен: "));
+      LOG.println(WiFi.softAPIP());
+      connect = false;
+      apFallbackActive = true;
+      apFallbackStartMs = millis();
+      lastRouterRetryMs = millis();
+    } else {
+      WiFi.mode(WIFI_STA);
+
+      if (use_static_ip) {  
+        WiFi.config(Static_IP, Gateway, Subnet, DNS1, DNS2);
+      }
+
+      wifiMulti.addAP(main_ssid.c_str(), main_pass.c_str());
+
+      delay(10);
+
+      #if USE_BLYNK
+      blynkConfiguredEnabled = blynkEnabled;
+      blynkConfiguredToken   = blynkToken;
+      blynkConfigured        = (blynkEnabled && blynkToken.length() > 0);
+      if (blynkConfigured) {
+        Blynk.config(blynkToken.c_str(), "blynk.tk", 8080);
+      }
+      #endif
+
+      #ifdef ESP32_USED
+       esp_task_wdt_reset();
+      #else
+       ESP.wdtFeed();
+      #endif
+
+      bool wifi_multi_enabled = jsonReadtoInt(configSetup, "wifi_multi");
+      if (wifi_multi_enabled) {
+        String ssid2 = jsonRead(configSetup, "ssid2");
+        String pass2 = jsonRead(configSetup, "password2");
+        String ssid3 = jsonRead(configSetup, "ssid3");
+        String pass3 = jsonRead(configSetup, "password3");
+
+        if (ssid2.length() > 0) {
+          wifiMulti.addAP(ssid2.c_str(), pass2.c_str());
+          LOG.printf_P(PSTR("Добавлена сеть 2: %s\n"), ssid2.c_str());
+        }
+        if (ssid3.length() > 0) {
+          wifiMulti.addAP(ssid3.c_str(), pass3.c_str());
+          LOG.printf_P(PSTR("Добавлена сеть 3: %s\n"), ssid3.c_str());
+        }
+      }
+
+      LOG.print(F("Подключение к WiFi"));
+      uint32_t startTime = millis();
+      uint32_t timeout = (uint32_t)ESP_CONN_TIMEOUT * 1000UL;
+      if (timeout == 0) timeout = 15000UL;
+
+      while (wifiMulti.run() != WL_CONNECTED) {
+        delay(500);
+        LOG.print(F("."));
+
+        #ifdef ESP32_USED
+         esp_task_wdt_reset();
+        #else
+         ESP.wdtFeed();
+        #endif
+
+        if (millis() - startTime > timeout) {
+          LOG.println(F("\nНе удалось подключиться, запускаем временный AP"));
+          WiFi.mode(WIFI_AP_STA);
+          if (sizeof(AP_STATIC_IP)) {
+            WiFi.softAPConfig(
+              IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]),
+              IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),
+              IPAddress(255, 255, 255, 0));
+          }
+          WiFi.softAP(AP_NAME.c_str(), AP_PASS.c_str());
+          delay(100);
+          LOG.print(F("AP запущен: "));
+          LOG.println(WiFi.softAPIP());
+
+          connect = false;
+          apFallbackActive = true;
+          apFallbackStartMs = millis();
+          lastRouterRetryMs = millis();
+          break;
+        }
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        LOG.println(F("\nWiFi подключён!"));
+        LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
+        LOG.print(F("IP: ")); LOG.println(WiFi.localIP());
+        connect = true;
+        apFallbackActive = false;
       }
     }
-
-    LOG.print(F("Подключение к WiFi"));
-    uint32_t startTime = millis();
-    uint32_t timeout = (uint32_t)ESP_CONN_TIMEOUT * 1000UL;
-    if (timeout == 0);
-
-    while (wifiMulti.run() != WL_CONNECTED) {
-      delay(500);
-      LOG.print(F("."));
-      if (millis() - startTime > timeout) {
-        LOG.println(F("\nНе удалось подключиться, активируем AP режим"));
-        espMode = 0;
-        jsonWrite(configSetup, "ESP_mode", 0);
-        saveConfig();
-        ESP.restart();
-      }
-    }
-
-    LOG.println(F("\nWiFi подключён!"));
-    LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
-    LOG.print(F("IP: ")); LOG.println(WiFi.localIP());
       #if USE_TFT
       TFT_ShowIP(WiFi.localIP().toString().c_str());
       #endif
@@ -1107,61 +1135,77 @@ void setup()  //================================================================
 }
 
 timerMinim apFallbackTimer(1000UL);
-bool apFallbackActive = false;
 
 void checkWiFiFallback() {
   if (espMode == 0U) {
     apFallbackActive = false;
     return;
   }
+
   if (WiFi.status() == WL_CONNECTED) {
-    apFallbackTimer.reset();
+    if (apFallbackActive) {
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      LOG.println(F("WiFi восстановлен"));
+    }
     apFallbackActive = false;
     return;
   }
-  // Wi-Fi потерян
-  if (!apFallbackActive && apFallbackTimer.isReady()) {
-    static uint16_t lostSeconds = 0;
-    lostSeconds++;
-    uint16_t timeoutSeconds = 180 + random(0, 1621);
-    if (lostSeconds >= timeoutSeconds) {
-      LOG.println(F("\nWi-Fi потерян слишком долго - переключаемся в режим AP+STA!"));
-      espMode = 0;
-      jsonWrite(configSetup, "ESP_mode", 0);
-      saveConfig();
+
+  // Wi-Fi потерян поднимаем AP
+  if (!apFallbackActive) {
+    if (apFallbackStartMs == 0) {
+      apFallbackStartMs = millis();
+    }
+
+    if (millis() - apFallbackStartMs >= 20000UL) {
+      LOG.println(F("\nWi-Fi потерян"));
       WiFi.mode(WIFI_AP_STA);
-      WiFi.softAPConfig(
-        IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]),
-        IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),
-        IPAddress(255, 255, 255, 0));
+      if (sizeof(AP_STATIC_IP)) {
+        WiFi.softAPConfig(
+          IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]),
+          IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], 1),
+          IPAddress(255, 255, 255, 0));
+      }
       WiFi.softAP(AP_NAME.c_str(), AP_PASS.c_str());
+      delay(100);
       LOG.print(F("Точка доступа запущена: "));
       LOG.println(WiFi.softAPIP());
-      connect = true;
+
       apFallbackActive = true;
+      lastRouterRetryMs = millis();
       restartSSDP();
     }
   }
 }
 
 void wifiReconnect() {
-  bool currentlyConnected = false;
-  if (espMode == 0U) {
-    currentlyConnected = (wifiMulti.run(800) == WL_CONNECTED);
-  } else {
-    currentlyConnected = (WiFi.status() == WL_CONNECTED);
-  }
+  bool currentlyConnected = (WiFi.status() == WL_CONNECTED);
+
   if (currentlyConnected && !connect) {
     LOG.println(F("\nWiFi подключён!"));
     LOG.print(F("SSID: ")); LOG.println(WiFi.SSID());
     LOG.print(F("IP:   ")); LOG.println(WiFi.localIP());
     connect = true;
+    apFallbackStartMs = 0;
+    apFallbackActive = false;
     restartSSDP();
+    return;
   }
-  else if (!currentlyConnected && connect && espMode == 1U) {
-    LOG.println(F("WiFi потерян"));
+
+  if (!currentlyConnected && connect && espMode == 1U) {
     connect = false;
     ssdpInitialized = false;
+    apFallbackStartMs = millis();
+  }
+
+  // В режиме router каждые 5 минут снова пробуем подключиться к роутеру
+  if (espMode == 1U && !currentlyConnected) {
+    if (millis() - lastRouterRetryMs >= 300000UL) {
+      lastRouterRetryMs = millis();
+      LOG.println(F("Повторная попытка подключения к роутеру..."));
+      wifiMulti.run();
+    }
   }
 }
 
@@ -1176,8 +1220,6 @@ void restartSSDP() {
 
 void loop()  //====================================================================  void loop()  ===========================================================================
 {
-  checkWiFiFallback();
-  wifiReconnect();
   parseUDP();
 
   #if USE_RTC
@@ -1196,6 +1238,9 @@ void loop()  //=================================================================
 
 do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++========= Главный цикл ==========+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+  checkWiFiFallback();
+  wifiReconnect();
+  
 #if (USE_WEATHER == 1)  // Погода обновляется раз в 10 минут
     if (inClockWeatherMode && WiFi.status() == WL_CONNECTED &&
         millis() - weatherUpdateTimer >= WEATHER_UPDATE_INTERVAL) {
@@ -1352,13 +1397,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     String MqttSnd = "{\"power\":\"ON\"}"; //Строка для ответа "{"power":"ON","cycle":"OFF","effect":"111","bri":"15","spd":"33","sca":"58","sound":"ON","volume":"10","runt":"10","runc":"123","runf":"1","runc":"220","rnde":"0","rndc":"1","rndf":"0","tmr":59900"}"
     jsonWrite(MqttSnd, "power", ONflag ? "ON" : "OFF");   // Создание строки для MQTT ответа в формате JSON в виде выше.
     jsonWrite(MqttSnd, "cycle", FavoritesManager::FavoritesRunning ? "ON" : "OFF"); // Включить/выключить режим "цикл" ("избранное")
-     for ( uint8_t n=0; n< MODE_AMOUNT; n++)
-     {
-         if (eff_num_correct[n] == currentMode){
-            jsonWrite(MqttSnd, "effect", (String)n);                    
-            break;
-         } 
-     } 
+    jsonWrite(MqttSnd, "effect", (String)currentMode);
     jsonWrite(MqttSnd, "bri", (String)modes[currentMode].Brightness);   // Яркость эффектов
     jsonWrite(MqttSnd, "spd", (String)modes[currentMode].Speed);        // Скорость эффектов
     jsonWrite(MqttSnd, "sca", (String)modes[currentMode].Scale);        // Масштаб эффектов

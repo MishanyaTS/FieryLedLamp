@@ -169,15 +169,15 @@ void buttonTick()
       do 
       {
         if (++temp >= MODE_AMOUNT) temp = 0;
-        currentMode = eff_num_correct[temp];
+        currentMode = temp;
       } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
       if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
         if (++temp >= MODE_AMOUNT) temp = 0;
-        currentMode = eff_num_correct[temp];
+        currentMode = temp;
     }
     else
       if (++temp >= MODE_AMOUNT) temp = 0;
-    currentMode = eff_num_correct[temp];
+    currentMode = temp;
     jsonWrite(configSetup, "eff_sel", temp);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
@@ -213,15 +213,15 @@ void buttonTick()
       do
       {
         if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-        currentMode = eff_num_correct[temp];
+        currentMode = temp;
       } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
       if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
         if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-        currentMode = eff_num_correct[temp];
+        currentMode = temp;
     }
     else 
       if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-    currentMode = eff_num_correct[temp];
+    currentMode = temp;
     jsonWrite(configSetup, "eff_sel", temp);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
@@ -754,16 +754,7 @@ if (touch.isStep()){
       {
         Button_Holding = true;
         currentMode = EFF_WHITE_COLOR;
-    //String Name = "correct." + jsonRead (configSetup, "lang") + ".json";
-    //String Correct = readFile(Name, 2048);
-    for ( uint8_t n=0; n< MODE_AMOUNT; n++)
-    {
-        if (eff_num_correct[n] == currentMode)
-        {
-            jsonWrite(configSetup, "eff_sel", n);
-            break;
-        }
-    }
+    jsonWrite(configSetup, "eff_sel", currentMode);
         jsonWrite(configSetup, "br", modes[currentMode].Brightness);
         jsonWrite(configSetup, "sp", modes[currentMode].Speed);
         jsonWrite(configSetup, "sc", modes[currentMode].Scale);

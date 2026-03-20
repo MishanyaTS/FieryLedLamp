@@ -115,7 +115,7 @@ void handleFileList() {
     output += F("{\"type\":\"");
     output += (isDir) ? F("dir") : F("file");
     output += F("\",\"name\":\"");
-    output += String(file.name()).substring(1);
+    output += String(file.name()).substring(0);
     output += "\"}";
     file.close();
 //    isDir = false;

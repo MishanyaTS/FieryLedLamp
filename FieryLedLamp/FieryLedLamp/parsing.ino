@@ -96,11 +96,11 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
                 do 
                 {
                   if (++temp >= MODE_AMOUNT) temp = 0;
-                  currentMode = eff_num_correct[temp];
+                  currentMode = temp;
                 } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
                 if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
                   if (++temp >= MODE_AMOUNT) temp = 0;
-                  currentMode = eff_num_correct[temp];
+                  currentMode = temp;
               }
               else
                 if (++temp >= MODE_AMOUNT) temp = 0;
@@ -112,16 +112,16 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
               do
               {
                 if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-                currentMode = eff_num_correct[temp];
+                currentMode = temp;
               } while (FavoritesManager::FavoriteModes[currentMode] == 0 && currentMode != lastMode);
               if (currentMode == lastMode) // если ни один режим не добавлен в избранное, всё равно куда-нибудь переключимся
                 if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
-                currentMode = eff_num_correct[temp];
+                currentMode = temp;
             }
             else 
               if (--temp >= MODE_AMOUNT) temp = MODE_AMOUNT - 1;
           }
-            currentMode = eff_num_correct[temp];
+            currentMode = temp;
             jsonWrite(configSetup, "eff_sel", temp);
             jsonWrite(configSetup, "br", modes[currentMode].Brightness);
             jsonWrite(configSetup, "sp", modes[currentMode].Speed);
@@ -148,7 +148,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       temp = (uint8_t)atoi(buff);
-      currentMode = eff_num_correct[temp];
+      currentMode = temp;
       updateSets();
 	  jsonWrite(configSetup, "eff_sel", temp);
 	  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
@@ -258,16 +258,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }    
     #endif  // USE_MP3_PLAYER
-
-    else if (!strncmp_P(inputBuffer, PSTR("LANG"), 4))
-    {
-      memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      //String str_temp(buff);
-	  jsonWrite(configSetup, "lang", buff);
-      saveConfig();
-      Lang_set();
-      NEWsendCurrent(inputBuffer);
-    }
 
     else if (!strncmp_P(inputBuffer, PSTR("BRI"), 3))
     {
@@ -574,15 +564,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
      jsonWrite(configSetup, "vol", eff_volume);
      jsonWrite(configSetup, "fold_sel", CurrentFolder);
      #endif // USE_MP3_PLAYER
-     
-     for ( uint8_t n=0; n< MODE_AMOUNT; n++)
-     {
-        if (eff_num_correct[n] == currentMode)
-        {
-            jsonWrite(configSetup, "eff_sel", n);
-            break;
-        }
-     } 
 
      jsonWrite(configSetup, "Power", ONflag);
      }
@@ -1332,11 +1313,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
 void sendCurrent(char *outputBuffer)
 {
-    uint8_t n;
-    for (n=0; n< MODE_AMOUNT; n++)
-    {
-        if (eff_num_correct[n] == currentMode) break;
-    }
+    uint8_t n = currentMode;
   sprintf_P(outputBuffer, PSTR("CURR %u %u %u %u %u %u"),
     n,
     modes[currentMode].Brightness,
@@ -1375,11 +1352,7 @@ void sendCurrent(char *outputBuffer)
 
 void NEWsendCurrent(char *outputBuffer)
 {
-    uint8_t n;
-    for (n=0; n< MODE_AMOUNT; n++)
-    {
-        if (eff_num_correct[n] == currentMode) break;
-    }
+    uint8_t n = currentMode;
   #if GENERAL_DEBUG
   LOG.println ("NEWsendCurrent");
   #endif
@@ -1413,10 +1386,6 @@ void NEWsendCurrent(char *outputBuffer)
   time_t currentTicks = millis() / 1000UL;
   sprintf_P(outputBuffer, PSTR("%s %02u:%02u:%02u"), outputBuffer, hour(currentTicks), minute(currentTicks), second(currentTicks));
   #endif
-  String str  = jsonRead(configSetup, "lang");
-  char temp[3];
-  str.toCharArray(temp, 3);
-  sprintf_P(outputBuffer, PSTR("%s %s"), outputBuffer, temp); // отправка пріложенію, яка мова вибрана у лампі
   #if USE_MP3_PLAYER
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_sound_on);
   //sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)eff_volume);

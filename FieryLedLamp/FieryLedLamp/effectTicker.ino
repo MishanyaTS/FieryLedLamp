@@ -343,13 +343,7 @@ void Eff_Tick () {
   #endif  // USE_MP3_PLAYER
   #if USE_MULTIPLE_LAMPS_CONTROL
     if (repeat_multiple_lamp_control)  {
-        for ( uint8_t n = 0; n < MODE_AMOUNT; n++)
-        {
-            if (eff_num_correct[n] == currentMode) {
-                jsonWrite(configSetup, "eff_sel", n);
-                break;
-            }
-        }
+        jsonWrite(configSetup, "eff_sel", currentMode);
         #if USE_MP3_PLAYER
         if (mp3_player_connect == 4) {
           mp3_loop();
