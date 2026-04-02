@@ -5,18 +5,8 @@
 // Или ничего не трогайте, если собирали, по схемам из этого архива.
 // В любом случае ВНИМАТЕЛЬНО прочтите файл ПРОЧТИ МЕНЯ!!!.txt из этого архива.
 // ==================================================================
-// Ссылки для менеджера плат:
-// ESP8266:
-// https://arduino.esp8266.com/stable/package_esp8266com_index.json
-// ESP32:
+// Ссылка для менеджера плат:
 // https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-// ESP8266:
-// При установке выбираем версию 2.7.4
-//
-// ESP32:
-// При установке выбираем версию 2.0.14
-// Выбираем плату ESP32 Dev Module
-// Размер памяти 4MB with spiffs (1.43MB APP/1.1MB SPIFFS)
 //
 // ESP32-S3:
 // При установке выбираем версию 2.0.14
@@ -24,55 +14,34 @@
 // USB CDC On Boot: "Enabled"
 // Flash Size: "16MB (128MB)"
 // PSRAM: "OPI PSRAM"
-// Размер памяти "16MB with spiffs (6.25MB APP/3.43MB SPIFFS)"
+// Размер памяти "16MB with spiffs (6.25MB_backup APP/3.43MB SPIFFS)"
 // =================================================================
-
-// ******************************* - ВЫБОР ПЛАТЫ И ЯДРА- *******************************************
-#ifdef ESP32           // Определено в IDE если используется ESP32 (не нужно изменять для ESP8266)
- #define ESP32_USED    // Используется контоллер ESP32 (не нужно менять для ESP8266)
- #define CORE_2_0_X
- #ifdef BOARD_HAS_PSRAM
-    #define ESP32_S3_USED
-  #endif
- #endif
+#if !defined(CONFIG_IDF_TARGET_ESP32S3)
+  #error "Этот проект поддерживает только ESP32-S3. Выберите плату ESP32S3 Dev Module."
+#endif
+#define ESP32_USED
+#define ESP32_S3_USED
+#define CORE_2_0_X
 //===================================================================================================
 // Далее следует код проекта. Не меняйте здесь ничего, если вы не понимаете, к чему это приведет!!!
 //===================================================================================================
 
 #include <pgmspace.h>
-#ifdef ESP32_USED
- #include "esp_wifi.h"                // Борьба с рестартом esp32 "assertion "Invalid mbox""
- #include "nvs_flash.h"               // Борьба с рестартом esp32 "assertion "Invalid mbox""
- #include <WiFi.h>
- #include <WiFiMulti.h>
- WiFiMulti wifiMulti;
- #include <WiFiAP.h>
- #include <WebServer.h>
- #include <WiFiClientSecure.h>
- #include <ESP32SSDP.h>               // https://github.com/luc-github/ESP32SSDP
- #include <time.h>
- #include <HardwareSerial.h>          // Используется аппаратный UART
- #include "esp_system.h"
- #include "esp_int_wdt.h"
- #include "esp_task_wdt.h"
- #include <ElegantOTA.h>
-#else
- #include <ESP8266SSDP.h>
- #include <ESP8266WiFi.h>
- #include <ESP8266WiFiMulti.h>
- ESP8266WiFiMulti wifiMulti;
- #include <ESP8266WebServer.h>
- #include <ElegantOTA.h>
- #define FASTLED_USE_PROGMEM 1        // просим библиотеку FASTLED экономить память контроллера на свои палитры
- #endif
- 
-#if (USE_WEATHER == 1)
-#ifndef ESP32_USED
-#include <coredecls.h>
-#include <TZ.h>
-#include <sntp.h>
-#endif
-#endif
+#include "esp_wifi.h"                // Борьба с рестартом esp32 "assertion "Invalid mbox""
+#include "nvs_flash.h"               // Борьба с рестартом esp32 "assertion "Invalid mbox""
+#include <WiFi.h>
+#include <WiFiMulti.h>
+WiFiMulti wifiMulti;
+#include <WiFiAP.h>
+#include <WebServer.h>
+#include <WiFiClientSecure.h>
+#include <ESP32SSDP.h>               // https://github.com/luc-github/ESP32SSDP
+#include <time.h>
+#include <HardwareSerial.h>          // Используется аппаратный UART
+#include "esp_system.h"
+#include "esp_int_wdt.h"
+#include "esp_task_wdt.h"
+#include <ElegantOTA.h>
 
 #include <FastLED.h>
 #include <WiFiUdp.h>
@@ -104,6 +73,10 @@
 #endif
 #include "EepromManager.h"
 #include "FavoritesManager.h"
+
+bool restoreConfigBackupFromPartition();
+bool isConfigRestorePending();
+void clearConfigRestorePending();
 #include "TimerManager.h"
 #if USE_BLYNK
 String blynkToken;
@@ -111,19 +84,12 @@ bool blynkEnabled = false;
 bool blynkConfigured = false;
 String blynkConfiguredToken;
 bool blynkConfiguredEnabled = false;
- #ifdef ESP32_USED
-  #include <BlynkSimpleEsp32.h>
- #else
-  #include <BlynkSimpleEsp8266.h>
- #endif
+#include <BlynkSimpleEsp32.h>
 #endif
 #if USE_TM1637
 #include "TM1637Display.h"
 #endif
 #if USE_MP3_PLAYER
- #ifndef ESP32_USED
-  #include <SoftwareSerial.h>     // Подключаем библиотеку для работы с последовательным интерфейсом
- #endif
  #ifdef MP3_DEBUG
   #define FEEDBACK  1
  #else
@@ -206,13 +172,8 @@ uint32_t MqttManager::mqttLastConnectingAttempt = 0;
 SendCurrentDelegate MqttManager::sendCurrentDelegate = NULL;
 #endif
 
-#ifdef ESP32_USED
- WebServer server(80);
- WebServer HTTP (ESP_HTTP_PORT);         // Объект для обнавления с web страницы
-#else
- ESP8266WebServer server(80);
- ESP8266WebServer HTTP (ESP_HTTP_PORT);  // Web интерфейс для устройства
-#endif
+WebServer server(80);
+WebServer HTTP (ESP_HTTP_PORT);         // Объект для обнавления с web страницы
 File fsUploadFile;                       // Для файловой системы
 
 // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ -------
@@ -312,6 +273,7 @@ uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
 uint8_t PRINT_TIME ;
 uint16_t PRINT_WEATHER ;
 #if USE_TFT
+uint8_t tft_on = 1;                   // Использовать дисплей TFT: 0 - выкл, 1 - вкл
 uint8_t tft_clock_color = 0;
 uint8_t tft_weather_color = 1;
 bool     tft_ticker_on = false;
@@ -354,6 +316,7 @@ bool day_advert_sound_on;            // Вкл.Выкл озвучивания �
 bool night_advert_sound_on;          // Вкл.Выкл озвучивания времени ночью
 bool alarm_advert_sound_on;          // Вкл.Выкл озвучивания времени будильником
 uint8_t mp3_player_connect = 0;      // Плеер не подключен. true - подключен.
+uint8_t mp3_player_on = 1;            // Использовать MP3-плеер: 0 - выкл, 1 - вкл
 uint8_t mp3_folder_last=255;         // Предыдущая папка для воспроизведения
 //uint8_t mp3_folder_change =0;      // Указывает, была ли изменена папка
 bool set_mp3_play_now=false;         // Указывает, надо ли играть сейчас мелодии
@@ -366,11 +329,7 @@ uint8_t eff_volume = 9;              // Громкость воспроизве�
 uint8_t eff_sound_on = 0;            // Звук включен - !0 (true), выключен - 0
 uint8_t CurrentFolder;               // Папка, на которую переключились (будет проигрываться)
 uint8_t CurrentFolder_last = 0;      // Предыдущая текущая папка
-#ifdef ESP32_USED
- HardwareSerial mp3(1);              // Используем UART1
-#else
- SoftwareSerial mp3(MP3_RX_PIN, MP3_TX_PIN);  // Создаём объект mySoftwareSerial и указываем выводы, к которым подлючен плеер (RX, TX)
-#endif
+HardwareSerial mp3(1);              // Используем UART1
 //#ifndef USE_TM1637
 // uint8_t minute_tmp;
 //#endif
@@ -408,6 +367,7 @@ uint32_t tmr_clock = 0;              // +++ Таймер мигания разд
 uint32_t tmr_blink = 0;              // +++ Таймер плавного изменения яркости дисплея
 TM1637Display display(CLK, DIO);     // +++ Подключаем дисплей
 bool aDirection = false;             // +++ Направление изменения яркости
+uint8_t tm1637_on = 1;                // Использовать дисплей TM1637: 0 - выкл, 1 - вкл
 #endif  //USE_TM1637
 
 #if HEAP_SIZE_PRINT
@@ -423,6 +383,7 @@ uint32_t mem_timer;
  uint8_t Enter_Digits_Count = 0;
  unsigned long IR_Digit_Timer = 0;
  unsigned long lastIRtime = 0;  // время последнего приёма ИК-сигнала
+ uint8_t ir_on = 1;                    // Использовать ИК-приёмник: 0 - выкл, 1 - вкл
 
 #define IR_REPEAT_TIMER      500   // Время ожидания повтора
 #define IR_TICK_TIMER        100    // Время между автоповтором
@@ -468,6 +429,7 @@ void FS_init(void) {
   HTTP.on("/edit", HTTP_PUT, handleFileCreate);
   HTTP.on("/edit", HTTP_DELETE, handleFileDelete);
   HTTP.on("/edit", HTTP_POST, []() {
+  HTTP.send(200, "text/plain", "OK");
   }, handleFileUpload);
   HTTP.on("/list", HTTP_GET, handleFileList);
   HTTP.onNotFound([]() {
@@ -478,6 +440,7 @@ void FS_init(void) {
 }
 
 #if USE_RTC
+uint8_t rtc_on = 1;                   // Использовать RTC: 0 - выкл, 1 - вкл
 bool wasError(const char* errorTopic = "")
 {
   #ifdef RTC_3231
@@ -520,19 +483,9 @@ void setup()  //================================================================
 
   Serial.begin(115200);
   delay(300);
-  #ifdef ESP32_USED
   esp_task_wdt_init(8, true);   // Initialize the task watchdog timer
-  #else
-  ESP.wdtEnable(WDTO_8S);
-  #endif
 
-  LOG.print(F("\n\n\nSYSTEM START"));
-  #ifdef ESP32
-  LOG.print (F(" ESP32\n"));
-  #endif
-  #ifdef ESP8266
-  LOG.print (F(" ESP8266\n"));
-  #endif
+  LOG.print(F("\n\n\nSYSTEM START ESP32-S3\n"));
 
 #ifndef USE_RTC
   hasRtc = false;
@@ -563,37 +516,85 @@ void setup()  //================================================================
   #endif
   #endif
   
-  // часы
-#if USE_TM1637
-  LOG.println(F("Старт дисплея TM1637"));
-  tmr_clock = millis();                                     // +++ устанавливаем начальное значение счетчика
-  display.setBrightness(DispBrightness);                    // +++ яркость дисплея максимальная = 255
-  display.displayByte(_empty, _empty, _empty, _empty);      // +++ очистка дисплея
-  display.displayByte(_dash, _dash, _dash, _dash);          // +++ отображаем прочерки
-#endif
-
-  #if USE_TFT
-    LOG.println(F("Старт дисплея TFT ST7789"));
-    TFT_Init();
-    tftShowStartText();
-  #endif
-
    //File Fystem
   #if GENERAL_DEBUG  
   LOG.print(F("\nСтарт файловой системы\n"));
   #endif
   FS_init();  //Запускаем файловую систему
-  
+
+  if (isConfigRestorePending()) {
+    bool restored = restoreConfigBackupFromPartition();
+    clearConfigRestorePending();
+    if (restored) LOG.println(F("Настройки восстановлены"));
+    else          LOG.println(F("Не удалось восстановить настройки"));
+  }
+
+  {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    #if USE_BUTTON
+    String buttonOnCfg = jsonRead(configHardware, "button_on");
+    buttonEnabled = (buttonOnCfg.length() == 0) ? 1 : buttonOnCfg.toInt();
+    #endif
+    #if USE_TM1637
+    String tm1637OnCfg = jsonRead(configHardware, "tm1637_on");
+    tm1637_on = (tm1637OnCfg.length() == 0) ? 1 : tm1637OnCfg.toInt();
+    #endif
+    #if USE_TFT
+    String tftOnCfg = jsonRead(configHardware, "tft_on");
+    tft_on = (tftOnCfg.length() == 0) ? 1 : tftOnCfg.toInt();
+    #endif
+    #if USE_IR_RECEIVER
+    String irOnCfg = jsonRead(configHardware, "ir_on");
+    ir_on = (irOnCfg.length() == 0) ? 1 : irOnCfg.toInt();
+    #endif
+    #if USE_RTC
+    String rtcOnCfg = jsonRead(configHardware, "rtc_on");
+    rtc_on = (rtcOnCfg.length() == 0) ? 1 : rtcOnCfg.toInt();
+    #endif
+    #if USE_MP3_PLAYER
+    String mp3OnCfg = jsonRead(configHardware, "mp3_on");
+    mp3_player_on = (mp3OnCfg.length() == 0) ? 1 : mp3OnCfg.toInt();
+    #endif
+  }
+
+  // часы
+#if USE_TM1637
+  if (tm1637_on) {
+  LOG.println(F("Старт дисплея TM1637"));
+  tmr_clock = millis();                                     // +++ устанавливаем начальное значение счетчика
+  display.setBrightness(DispBrightness);                    // +++ яркость дисплея максимальная = 255
+  display.displayByte(_empty, _empty, _empty, _empty);      // +++ очистка дисплея
+  display.displayByte(_dash, _dash, _dash, _dash);          // +++ отображаем прочерки
+  }
+#endif
+
+  #if USE_TFT
+    if (tft_on) {
+    LOG.println(F("Старт дисплея TFT ST7789"));
+    TFT_Init();
+    tftShowStartText();
+    } else {
+      TFT_PowerOff();
+    }
+  #endif
+
   #if USE_IR_RECEIVER
   IR_LoadConfigFromFile();
   #endif
-  
+
+  EEPROM.begin(EEPROM_TOTAL_BYTES_USED);
+  delay(10);
+
   configSetup = readFile(F("config.json"), 2048);
+  if (configSetup == F("Failed") || configSetup == F("Large")) configSetup = F("{}");
+  if (EepromManager::RestoreWifiBackupAfterGitHubOta(configSetup)) {
+    saveConfig();
+    LOG.println(F("WiFi настройки восстановлены"));
+  }
   //Настраиваем и запускаем SSDP интерфейс
   #if GENERAL_DEBUG
   LOG.print(F("Старт SSDP\n"));
   #endif
-
   
 //-----------Инициализируем переменные, хранящиеся в файле config.json--------------
   LAMP_NAME = jsonRead(configSetup, "SSDP");
@@ -616,9 +617,6 @@ void setup()  //================================================================
   tft_ticker_speed = jsonReadtoInt(configSetup, "tft_ticker_speed");
   tft_ticker_period = jsonReadtoInt(configSetup, "tft_ticker_period");
   (jsonRead(configSetup, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configSetup, "tft_ticker_text")).length() + 1);
-  #endif
-  #if USE_BUTTON
-   buttonEnabled = jsonReadtoInt(configSetup, "button_on");
   #endif
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
   time_always = jsonReadtoInt(configSetup, "time_always");
@@ -648,6 +646,7 @@ void setup()  //================================================================
   #endif
   
   #if USE_RTC
+    if (rtc_on) {
     #ifdef RTC_3231
     Wire.begin(I2C_SDA, I2C_SCL);
     #endif
@@ -691,6 +690,9 @@ void setup()  //================================================================
     Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
     wasError("setup SetSquareWavePin");
     #endif
+    } else {
+      hasRtc = false;
+    }
   #endif //USE_RTC
 
   #if USE_MP3_PLAYER
@@ -738,11 +740,7 @@ void setup()  //================================================================
   {
     handleTelnetClient();
     delay(100);
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
   }
   #endif
 
@@ -788,9 +786,6 @@ void setup()  //================================================================
   FavoritesManager::Dispersion = jsonReadtoInt(configSetup, "disp");
   FavoritesManager::UseSavedFavoritesRunning = jsonReadtoInt(configSetup, "cycle_allwase");
   jsonWrite(configSetup, "tmr", 0);
-  #if USE_BUTTON
-  jsonWrite(configSetup, "button_on", buttonEnabled);
-  #endif
   first_entry = 1;
   handle_cycle_set();  // Чтение выбранных эффектов
   first_entry = 0;
@@ -806,11 +801,7 @@ void setup()  //================================================================
   // MP3 Player
    
   #if USE_MP3_PLAYER
-   #ifdef ESP32_USED
-    mp3.begin(9600, SERIAL_8N1, MP3_RX_PIN, MP3_TX_PIN);
-   #else
-    mp3.begin(9600);
-   #endif
+   mp3.begin(9600, SERIAL_8N1, MP3_RX_PIN, MP3_TX_PIN);
    LOG.println (F("\nСтарт MP3 Player"));
    mp3_timer = millis();
    mp3_player_connect = 1;
@@ -845,11 +836,7 @@ void setup()  //================================================================
       #endif
         while(!fillString(WiFi.softAPIP().toString().c_str(), CRGB::White, false)) {
            delay(1);
-           #ifdef ESP32_USED
             esp_task_wdt_reset();
-          #else
-           ESP.wdtFeed();
-          #endif
            }
         if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
           FastLED.clear();
@@ -909,11 +896,7 @@ void setup()  //================================================================
       }
       #endif
 
-      #ifdef ESP32_USED
-       esp_task_wdt_reset();
-      #else
-       ESP.wdtFeed();
-      #endif
+      esp_task_wdt_reset();
 
       bool wifi_multi_enabled = jsonReadtoInt(configSetup, "wifi_multi");
       if (wifi_multi_enabled) {
@@ -941,11 +924,7 @@ void setup()  //================================================================
         delay(500);
         LOG.print(F("."));
 
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
 
         if (millis() - startTime > timeout) {
           LOG.println(F("\nНе удалось подключиться, запускаем временный AP"));
@@ -989,11 +968,7 @@ void setup()  //================================================================
       #endif
         while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
            delay(1);
-           #ifdef ESP32_USED
             esp_task_wdt_reset();
-          #else
-           ESP.wdtFeed();
-          #endif
            }
         if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
           FastLED.clear();
@@ -1029,11 +1004,7 @@ void setup()  //================================================================
  // NTP
   #ifdef USE_NTP
   timeClient.begin();
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
   #endif
 
 
@@ -1044,11 +1015,7 @@ void setup()  //================================================================
   if(!MqttServer.fromString(jsonRead(configMQTT, "mq_ip"))){
         jsonRead(configMQTT, "mq_ip").toCharArray(MqttHost, jsonRead(configMQTT, "mq_ip").length()+1);
         mqttIPaddr = false;
-/*        #ifdef ESP32_USED
-         WiFi.hostByName(MqttHost, MqttServer);
-        #else
-         WiFi.hostByName(MqttHost, MqttServer, RESOLVE_TIMEOUT);
-        #endif
+/*        WiFi.hostByName(MqttHost, MqttServer);
 */
   }
   else
@@ -1082,11 +1049,7 @@ void setup()  //================================================================
     mqttClient = new AsyncMqttClient();
     MqttManager::setupMqtt(mqttClient, inputBuffer, &sendCurrent);    // создание экземпляров объектов для работы с MQTT, их инициализация и подключение к MQTT брокеру
   }
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
   #endif
 
 
@@ -1098,7 +1061,7 @@ void setup()  //================================================================
   
   //IR receiver
   #if USE_IR_RECEIVER
-    irrecv.enableIRIn();  // Start the IR receiver
+    if (ir_on) irrecv.enableIRIn();  // Start the IR receiver
     IR_Tick_Timer = millis();
     IR_Repeat_Timer = millis();
   #endif  //USE_IR_RECEIVER
@@ -1119,7 +1082,10 @@ void setup()  //================================================================
   yandexGeoId = jsonRead(configSetup, "yandex_geo");
   if (yandexGeoId.length() == 0) yandexGeoId = "";
   weatherCity = jsonRead(configSetup, "city");
-  inClockWeatherMode = jsonReadtoInt(configSetup, "show_weather");
+  String configHardwareWeather = readFile(F("config_hardware.json"), 1024);
+  if (configHardwareWeather == F("Failed") || configHardwareWeather == F("Large")) configHardwareWeather = F("{}");
+  String weatherOnCfg = jsonRead(configHardwareWeather, "show_weather");
+  inClockWeatherMode = (weatherOnCfg.length() == 0) ? 1 : weatherOnCfg.toInt();
   preferYandex = (jsonReadtoInt(configSetup, "weather_source") == 0);
   if (inClockWeatherMode) weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 10000;
 #endif
@@ -1223,7 +1189,7 @@ void loop()  //=================================================================
   parseUDP();
 
   #if USE_RTC
-     if (hasRtc) {
+     if (rtc_on && hasRtc) {
       #ifdef RTC_3231
   if (!Rtc.IsDateTimeValid()) {
 #else
@@ -1263,7 +1229,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   yield();
   
   #if USE_TM1637
-     if (millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
+     if (tm1637_on && millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
       tmr_clock = millis();                     // обновляем значение счетчика
       boolean points[4] = {0,0,0,0};
       if (!DisplayFlag && (!inClockWeatherMode || showClock)) {
@@ -1276,20 +1242,21 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       if (!DisplayFlag) display.setSegmentPoints(points); // выкл/выкл двоеточия 
       Display_Timer();
    }
-    if (dawnFlag == 1 || sunsetFlag == 1) {
+    if (tm1637_on && (dawnFlag == 1 || sunsetFlag == 1)) {
       clockTicker_blink();
     }
   #endif  //USE_TM1637
 
   #if USE_TFT
-    TFT_LoopTick();
+    if (tft_on) TFT_LoopTick();
   #endif
   
   #if USE_MP3_PLAYER
-  switch (mp3_player_connect){
+  if (mp3_player_on) {
+    switch (mp3_player_connect){
       case 0: break;
       case 1: read_command(1);
-              if (millis() > 3000UL || mp3_receive_buf[3] == 0x3F){
+              if ((millis() - mp3_timer > 3000UL) || mp3_receive_buf[3] == 0x3F){
                  first_entry = 5;
                  //mp3_timer = millis();
                  mp3_setup ();
@@ -1300,7 +1267,8 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
               break;
       case 3: mp3_setup(); break;
       case 4: mp3_loop(); break;
-      }
+    }
+  }
                     
   #endif
 
@@ -1317,21 +1285,21 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #endif //HEAP_SIZE_PRINT
   
   #if USE_IR_RECEIVER
-       if (irrecv.decode(&results)) {
+      if (ir_on && irrecv.decode(&results)) {
         lastIRtime = millis();
         IR_Code = results.value;
         IR_Data_Ready = 1;
         irrecv.resume();
         }
 
-      if (millis() - IR_Tick_Timer > 100) {
+      if (ir_on && millis() - IR_Tick_Timer > 100) {
         IR_Tick_Timer = millis();
         if (IR_Data_Ready) {
           IR_Receive_Button_Handle();
           IR_Data_Ready = 0;
         }
       }
-      if (Enter_Digits_Count > 0 &&
+      if (ir_on && Enter_Digits_Count > 0 &&
         millis() - IR_Digit_Timer > IR_DIGIT_ENTER_TIMER) {
         Apply_Entered_Effect();
       }
@@ -1352,6 +1320,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #if USE_OTA
   otaManager.HandleOtaUpdate();                             // ожидание и обработка команды на обновление прошивки по воздуху
   #endif
+  OtaPackageHandle();
                                                             
   TimerManager::HandleTimer(&ONflag, //&settChanged, //&eepromTimeout, // обработка событий таймера отключения лампы
                             &timeout_save_file_changes,
@@ -1433,11 +1402,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #endif
  } //if (Painting == 0)
   yield();
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
 } while (connect);
 }
 
@@ -1570,13 +1535,8 @@ String buildYandexRuFromCond(const String& cond, float temp) {
 }
 
 bool httpsGetToString(const char* host, const String& path, uint32_t timeoutMs, String& outPayload) {
-#if defined(ESP32_USED)
   WiFiClientSecure client;
   client.setInsecure();
-#else
-  BearSSL::WiFiClientSecure client;
-  client.setInsecure();
-#endif
 
   if (!client.connect(host, 443)) return false;
   client.print(String("GET ") + path + " HTTP/1.1\r\n"
@@ -1642,11 +1602,7 @@ bool getWeatherFromYandex() {
   String payload;
   if (!httpsGetToString("yandex.com", path, 8000, payload)) return false;
 
-  #if defined(ESP32_USED)
-  DynamicJsonDocument doc(4096);   // ESP32 OK
-#else
-  DynamicJsonDocument doc(2048);   // ESP8266
-#endif
+  DynamicJsonDocument doc(4096);
 
   DeserializationError err = deserializeJson(doc, payload);
   if (err) return false;
@@ -1681,11 +1637,7 @@ bool getWeatherFromOpenWeather() {
   String payload;
   if (!httpsGetToString("api.openweathermap.org", path, 8000, payload)) return false;
 
-  #if defined(ESP32_USED)
   DynamicJsonDocument doc(2048);
-#else
-  DynamicJsonDocument doc(1536);   // ESP8266
-#endif
 
 DeserializationError err = deserializeJson(doc, payload);
   if (err) return false;

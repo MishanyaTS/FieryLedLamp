@@ -1,5 +1,6 @@
 #if USE_TM1637
 void Display_Timer (uint8_t argument)   {
+    if (!tm1637_on) return;
     
     if (DisplayFlag ==0 && LastEffect != currentMode) {
         LastEffect = currentMode;

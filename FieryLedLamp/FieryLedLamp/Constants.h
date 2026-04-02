@@ -1,7 +1,6 @@
 #pragma once
 
-#define VERSION      " v6.5"
-#define CUR_VERSION  "FieryLedLamp v6.5"
+#define VERSION      " v7.0"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -10,11 +9,11 @@
 // =============  МОДУЛИ  ========================================================================
 #define USE_BUTTON 1                                        // Использовать кнопку: 0 - нет, 1 - да
 #define BUTTON_IS_SENSORY 1                                 // Тип кнопки: 0 - механическая, 1 - сенсорная
-#define USE_TM1637 0                                        // Использовать дисплей TM1637: 0 - нет, 1 - да
+#define USE_TM1637 1                                        // Использовать дисплей TM1637: 0 - нет, 1 - да
 #define USE_TFT 1                                           // Использовать TFT ST7789: 0 - нет, 1 - да
 #define USE_IR_RECEIVER 1                                   // Использовать ИК-приёмник: 0 - нет, 1 - да
 #define USE_MP3_PLAYER 1                                    // Использовать MP3-плеер: 0 - нет, 1 - да
-#define USE_RTC 0                                           // Использовать модуль RTC (DS3231): 0 - нет, 1 - да
+#define USE_RTC 1                                           // Использовать модуль RTC (DS3231): 0 - нет, 1 - да
 
 // ===============================================================================================
 #define USE_WEATHER 1                                       // Использовать получение погоды: 0 - нет, 1 - да 
@@ -26,11 +25,8 @@
 
 // =============  НАСТРОЙКА МР3 ПЛЕЕРА  ==========================================================
 #if USE_MP3_PLAYER
-  //#define CHECK_MP3_CONNECTION                            // Закомментируйте эту строку, если нужно, чтобы лампа не проверяла наличие связи с MP3 плеером.
+  #define CHECK_MP3_CONNECTION                              // Закомментируйте эту строку, если нужно, чтобы лампа не проверяла наличие связи с MP3 плеером.
   //#define DF_PLAYER_IS_ORIGINAL                           // Если используется проигрыватель с чипом, отличным от AS20HGN402, закомментируйте эту строку
-#ifndef  DF_PLAYER_IS_ORIGINAL
-  //#define DF_PLAYER_GD3200x                               // Если у вас такой чип в плеере и эта строка не закомментирована, то для озвучивания времени используются разные голоса.
-#endif
 #endif
 //#define MP3_DEBUG                                         // если строка не закомментирована, выводятся отладочные сообщения mp3 player
 // =============  НАСТРОЙКА КНОПКИ  ==============================================================
@@ -93,9 +89,6 @@
 #define USE_LittleFS                                        // Закомментируйте, если используете SPIFFS
 
 // =============  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ  ===================================================
-#ifdef ESP32_USED
-// --------------------------------------------------------------------------------------------------------------------------------------------
-#ifdef ESP32_S3_USED
 // --- ESP_PIN_OUT ESP32-S3 ---
 #define LED_PIN               (14U)                         // Пин ленты
 #define BTN_PIN               (7U)                          // Пин кнопки
@@ -104,74 +97,23 @@
 #define MOSFET_PIN            (6U)                          // Пин MOSFET транзистора - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
 #define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
 #if USE_TM1637
-  #define DIO                   (18U)                       // TM1637 display DIO pin
-  #define CLK                   (21U)                       // TM1637 display CLK pin
+  #define DIO                 (18U)                         // TM1637 display DIO pin
+  #define CLK                 (21U)                         // TM1637 display CLK pin
 #endif
 #if USE_TFT
-  #define TFT_PIN_SCLK   (12U)                                // TFT SCL (SPI SCLK)
-  #define TFT_PIN_MOSI   (11U)                                // TFT SDA (SPI MOSI)
-  #define TFT_PIN_CS     (10U)                                // TFT CS
-  #define TFT_PIN_DC     (13U)                                // TFT DC
-  #define TFT_PIN_RST    (5U)                                 // TFT RES
-  #define TFT_PIN_BL     (4U)                                 // TFT BL
+  #define TFT_PIN_SCLK        (12U)                         // TFT SCL (SPI SCLK)
+  #define TFT_PIN_MOSI        (11U)                         // TFT SDA (SPI MOSI)
+  #define TFT_PIN_CS          (10U)                         // TFT CS
+  #define TFT_PIN_DC          (13U)                         // TFT DC
+  #define TFT_PIN_RST         (5U)                          // TFT RES
+  #define TFT_PIN_BL          (4U)                          // TFT BL
 #endif
 #if USE_MP3_PLAYER
-  #define MP3_TX_PIN            (17U)                       // Определяет пин TX (RX на плеере) последовательного порта
-  #define MP3_RX_PIN            (16U)                       // Определяет пин RX (TX на плеере) последовательного порта
+  #define MP3_TX_PIN          (17U)                         // Определяет пин TX (RX на плеере) последовательного порта
+  #define MP3_RX_PIN          (16U)                         // Определяет пин RX (TX на плеере) последовательного порта
 #endif
 #if USE_IR_RECEIVER
-  #define IR_RECEIVER_PIN       (15U)                       // Пин ИК сенсора
-#endif
-
-#else
-// --- ESP_PIN_OUT ESP32 ---
-#define LED_PIN               (32U)                         // Пин ленты
-#define BTN_PIN               (35U)                         // Пин кнопки
-#define I2C_SDA               (21U)                         // DS3231 SDA pin
-#define I2C_SCL               (22U)                         // DS3231 SCL pin
-#define MOSFET_PIN            (33U)                         // Пин MOSFET транзистора - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
-#define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
-//#define ALARM_PIN           (39U)                         // Пин состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
-//#define ALARM_LEVEL         (HIGH)                        // Логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
-#if USE_TM1637
-  #define DIO                 (13U)                         // TM1637 display DIO pin
-  #define CLK                 (27U)                         // TM1637 display CLK pin
-#endif
-#if USE_MP3_PLAYER
-  #define MP3_TX_PIN          (25U)                         // Определяет пин TX (RX на плеере) последовательного порта
-  #define MP3_RX_PIN          (26U)                         // Определяет пин RX (TX на плеере) последовательного порта
-#endif
-#if USE_IR_RECEIVER
-  #define IR_RECEIVER_PIN     (34U)                         // Пин ИК сенсора
-#endif
-#endif
-
-#else
-// --- ESP_PIN_OUT ESP8266 ---
-#define LED_PIN               (0U)                          // Пин ленты              (D3) 
-#define BTN_PIN               (4U)                          // Пин кнопки             (D2)
-#define MOSFET_PIN            (16U)                         // Пин MOSFET транзистора (D0) - может использоваться для управления питанием матрицы/ленты (если раскомментирована строка)
-#define MOSFET_LEVEL          (HIGH)                        // Логический уровень, в который будет установлен пен MOSFET_PIN, когда матрица включена - HIGH или LOW (если раскомментировать)
-//#define ALARM_PIN           (15U)                         // Пин состояния будильника – может быть использован для управления любым внешним устройством на время работы будильника (если раскомментировать)
-//#define ALARM_LEVEL         (HIGH)                        // Логический уровень, в который будет установлен пен ALARM_PIN, когда "рассвет"/будильник включен (если раскомментировать)
-#if USE_TM1637
-  #define DIO                 (14U)                         // TM1637 DIO на pin (D5)
-  #define CLK                 (5U)                          // TM1637 CLK на pin (D1)
-#endif
-#ifdef RTC_ATTACHED_TO_TM
-  #define I2C_SDA             (CLK)
-  #define I2C_SCL             (DIO)
-#else
-  #define I2C_SDA             (5U)                          // DS3231 SDA на GPIO5 (D1)
-  #define I2C_SCL             (14U)                         // DS3231 SCL на GPIO14 (D5)
-#endif
-#if USE_MP3_PLAYER
- #define MP3_TX_PIN           (12U)                         // Определяет пин (D6) TX (RX на плеере) последовательного порта
- #define MP3_RX_PIN           (13U)                         // Определяет пин (D7) RX (TX на плеере) последовательного порта
-#endif
-#if USE_IR_RECEIVER
-  #define IR_RECEIVER_PIN     (2U)                          // Пин ИК сенсора D4
-#endif
+  #define IR_RECEIVER_PIN     (15U)                         // Пин ИК сенсора
 #endif
 
 // =============  ЭФФЕКТЫ  =======================================================================
@@ -462,11 +404,7 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
 // если у вас не обычная матрица, а сборка из ленты или гирлянда, и возникают непонятной природы артефакты в рисунке эффекта, попробуйте менять следующие три строчки
 //#define FASTLED_ALLOW_INTERRUPTS      (1)                 // default: 1; // Используйте это, чтобы заставить FastLED разрешить прерывания в безтактовых наборах микросхем (или заставить его запретить), переопределив значение по умолчанию на платформах, которые это поддерживают. Установите значение 1, чтобы разрешить прерывания, или 0, чтобы их запретить.
 #define FASTLED_INTERRUPT_RETRY_COUNT   (0)                 // default: 2; // Используйте это, чтобы определить, сколько раз FastLED попытается повторно передать кадр, если он слишком долго прерывается.
-#ifdef ESP32_USED
- #define FASTLED_ESP32_RAW_PIN_ORDER
-#else
- #define FASTLED_ESP8266_RAW_PIN_ORDER                      // FASTLED_ESP8266_RAW_PIN_ORDER, FASTLED_ESP8266_D1_PIN_ORDER or FASTLED_ESP8266_NODEMCU_PIN_ORDER
-#endif
+#define FASTLED_ESP32_RAW_PIN_ORDER
 
 #define NUM_LEDS              (uint16_t)(WIDTH * HEIGHT)
 #define SEGMENTS              (1U)                          // диодов в одном "пикселе" (для создания матрицы из кусков ленты). вряд ли эффекты будут корректно работать, если изменить этот параметр
@@ -535,8 +473,14 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 #define EEPROM_MODES_START_ADDRESS              (0x50U)         // начальный адрес в EEPROM памяти для записи настроек эффектов (яркость, скорость, масштаб)
 #define EEPROM_FIRST_RUN_ADDRESS                (0x40U)         // (0x40U) адрес в EEPROM памяти для записи признака первого запуска (определяет необходимость первоначальной записи всех хранимых настроек)
 #define EEPROM_MODE_STRUCT_SIZE                 (3U)            // 1 байт - яркость; 1 байт - скорость; 1 байт - масштаб
-#define EEPROM_TOTAL_BYTES_USED                 (EEPROM_MODES_START_ADDRESS+MODE_AMOUNT*EEPROM_MODE_STRUCT_SIZE+1)       
+#define EEPROM_TOTAL_BYTES_USED_BASE            (EEPROM_MODES_START_ADDRESS+MODE_AMOUNT*EEPROM_MODE_STRUCT_SIZE+1)
+#define EEPROM_WIFI_BACKUP_START_ADDRESS        (EEPROM_TOTAL_BYTES_USED_BASE)
+#define EEPROM_WIFI_BACKUP_SIZE                 (512U)
+#define EEPROM_TOTAL_BYTES_USED                 (EEPROM_WIFI_BACKUP_START_ADDRESS + EEPROM_WIFI_BACKUP_SIZE)
 #define EEPROM_FIRST_RUN_MARK                   (MODE_AMOUNT-255) // число-метка, если ещё не записно в EEPROM_FIRST_RUN_ADDRESS, значит нужно проинициализировать EEPROM и записать все первоначальные настройки
+#define EEPROM_WIFI_BACKUP_MAGIC                (0x57494649UL)   // WIFI
+#define EEPROM_WIFI_BACKUP_VERSION              (1U)
+#define EEPROM_WIFI_BACKUP_PENDING_MARK         (0xA5U)
 #define EEPROM_WRITE_DELAY                      (30000UL)       // отсрочка записи в EEPROM после последнего изменения хранимых настроек, позволяет уменьшить количество операций записи в EEPROM
 #define SAVE_FILE_DELAY_TIMEOUT                 (15000UL)       // отсрочка записи в файл
 
@@ -544,26 +488,12 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 
 #include <ArduinoJson.h>
 
-#ifdef ESP32_USED
- #ifndef CORE_2_0_X
-  #define LittleFS LITTLEFS  // Core 1.0.x
- #endif
 #include <FS.h>
 #ifdef USE_LittleFS
- #ifdef CORE_2_0_X
-  #include <LittleFS.h>     // Core 2.0.x
- #else
-  #include <LITTLEFS.h>     // Core 1.0.x
- #endif
+  #include <LittleFS.h>
 #else
   #define LittleFS SPIFFS
   #include <SPIFFS.h>
-#endif
-#else
- #ifdef USE_LittleFS
-  #include <LittleFS.h>
-  #define LittleFS LittleFS
- #endif  
 #endif
 
 // --- AP (WiFi точка доступа) ---
@@ -700,6 +630,7 @@ void Display_Timer (uint8_t argument = 0);
 
 #if USE_TFT
   void TFT_Init();
+  void TFT_PowerOff();
   void TFT_Display_Timer(uint8_t argument = 0);
   void TFT_LoopTick();
 #endif
@@ -708,7 +639,6 @@ void Save_File_Changes();
 bool FileCopy (const String& SourceFile , const String& TargetFile); // Копирование файлов
 void showWarning(CRGB color, uint32_t duration, uint16_t blinkHalfPeriod);
 
-#ifdef ESP32_USED
  uint32_t get_Chip_ID(void){
  uint32_t chipId = 0;
    for(int i=0; i<17; i=i+8) {
@@ -716,4 +646,3 @@ void showWarning(CRGB color, uint32_t duration, uint16_t blinkHalfPeriod);
    }
    return chipId;
  }
-#endif

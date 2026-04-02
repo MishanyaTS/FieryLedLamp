@@ -567,11 +567,7 @@ void Print_IP()   {
       #endif
       while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
           delay(1);
-          #ifdef ESP32_USED
-           esp_task_wdt_reset();
-          #else
-           ESP.wdtFeed();
-          #endif
+          esp_task_wdt_reset();
           }
       #if USE_TFT
       TFT_HideIP();
@@ -592,11 +588,7 @@ void Print_IP()   {
       String str = "Точка доступа 192.168.4.1";
       while(!fillString(str.c_str(), CRGB::White, false)) {
           delay(1);
-          #ifdef ESP32_USED
-           esp_task_wdt_reset();
-          #else
-           ESP.wdtFeed();
-          #endif
+          esp_task_wdt_reset();
           }
           #if USE_TFT
       TFT_HideIP();

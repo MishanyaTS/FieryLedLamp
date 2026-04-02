@@ -36,7 +36,7 @@ void timeTick()
 Save_File_Changes();
   
   #if USE_RTC
-  if (hasRtc && !timeSynched) {
+  if (rtc_on && hasRtc && !timeSynched) {
     RtcDateTime now = Rtc.GetDateTime();
     if (!wasError("setup IsDateTimeValid")) {
       LOG.print(F("Time synced from RTC: "));
@@ -78,7 +78,7 @@ if (stillUseNTP)
            manualTimeShift = localTimeZone.toLocal(timeClient.getEpochTime()) - millis() / 1000UL;
          #endif
           #if USE_RTC
-          if (hasRtc) {
+          if (rtc_on && hasRtc) {
            timeToSet.InitWithEpoch32Time(timeClient.getEpochTime());
            Rtc.SetDateTime(timeToSet);
            LOG.println(F("Время синхронизировано с NTP"));
@@ -95,7 +95,7 @@ if (stillUseNTP)
       if (!timeSynched)                                                   // если время не было синхронизиировано ни разу, отключаем будильник до тех пор, пока оно не будет синхронизировано
       {
 #if USE_TM1637
-        if (!DisplayFlag) display.displayByte(_dash, _dash, _dash, _dash);                  // отображаем прочерки
+        if (tm1637_on && !DisplayFlag) display.displayByte(_dash, _dash, _dash, _dash);                  // отображаем прочерки
 #endif
         return;
       }
@@ -116,7 +116,7 @@ if (stillUseNTP)
         hours = hour(currentLocalTime);                   // получаем значение часов
         last_minute = minute(currentLocalTime);           // получаем значение минут
         #if USE_TM1637
-        clockTicker_blink();
+        if (tm1637_on) clockTicker_blink();
         #endif
         if (last_minute == 1) getBrightnessForPrintTime();
         
@@ -129,12 +129,9 @@ if (stillUseNTP)
         play_time_ADVERT();
         while (advert_flag) {
            play_time_ADVERT();
-           #ifdef ESP32_USED
-            esp_task_wdt_reset();
-           #else
-            ESP.wdtFeed();
-           #endif
+           esp_task_wdt_reset();
         }
+        first_entry = 0;
       }
     #endif  // USE_MP3_PLAYER
       }
@@ -188,7 +185,7 @@ if (stillUseNTP)
       else
       {
         // не время будильника (ещё не начался или закончился по времени)
-        if (dawnFlag == 1)
+        if (dawnFlag != 0)
         {
           dawnFlag = 0;
           dawnCounter = 0;
@@ -216,11 +213,8 @@ if (stillUseNTP)
        if (mp3_player_connect == 4 && sunsetFlag == 1 && sunsetPosition <= 10) {
         first_entry = 1;
         delay(mp3_delay);
-           #ifdef ESP32_USED
-            esp_task_wdt_reset();
-           #else
-            ESP.wdtFeed();
-           #endif
+           esp_task_wdt_reset();
+           first_entry = 0;
       }
     #endif  // USE_MP3_PLAYER
       
@@ -264,7 +258,7 @@ if (stillUseNTP)
       else
       {
         // не время заката (ещё не начался или закончился по времени)
-        if (sunsetFlag == 1)
+        if (sunsetFlag != 0)
         {
           sunsetFlag = 0;
           sunsetCounter = 0;
@@ -298,11 +292,7 @@ void resolveNtpServerAddress(bool &ntpServerAddressResolved)              // ф�
   {
     return;
   }
-  #ifdef ESP32_USED
-    int err = WiFi.hostByName(NTP_ADDRESS, ntpServerIp);
-  #else
-    int err = WiFi.hostByName(NTP_ADDRESS, ntpServerIp, RESOLVE_TIMEOUT);
-  #endif
+  int err = WiFi.hostByName(NTP_ADDRESS, ntpServerIp);
   if (err!=1 || ntpServerIp[0] == 0 || ntpServerIp == IPAddress(255U, 255U, 255U, 255U)) 
   {
     #if GENERAL_DEBUG
@@ -354,7 +344,7 @@ time_t getCurrentLocalTime()
         }
         milliscorrector = millis();
    
-       if (ntpServerAddressResolved || hasRtc)
+       if (ntpServerAddressResolved || (rtc_on && hasRtc))
           return localTimeZone.toLocal(getCurrentEpochTime());
         else    
           return millis() / 1000UL + manualTimeShift;
@@ -386,7 +376,7 @@ time_t getCurrentLocalTime()
 
 time_t getCurrentEpochTime() {
   #if USE_RTC
-    if (hasRtc) {
+    if (rtc_on && hasRtc) {
     RtcDateTime now = Rtc.GetDateTime();
     return now.Epoch32Time();
     }
@@ -421,6 +411,7 @@ String Get_Time(time_t LocalTime) {
 #if USE_TM1637
 void clockTicker_blink()
 {
+  if (!tm1637_on) return;
   if (timeSynched && !DisplayFlag) {  
   
   //tm1637_brightness ();

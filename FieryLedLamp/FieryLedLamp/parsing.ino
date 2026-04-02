@@ -655,20 +655,22 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     #if USE_BUTTON
     else if (!strncmp_P(inputBuffer, PSTR("BTN"), 3))
     {
-      if (strstr_P(inputBuffer, PSTR("ON")) - inputBuffer == 4)
-      {
-        buttonEnabled = true;
-        jsonWrite(configSetup, "button_on", (int) buttonEnabled);
-		saveConfig();
-        sendCurrent(inputBuffer);
-      }
-      else// if (strstr_P(inputBuffer, PSTR("OFF")) - inputBuffer == 4)
-      {
-        buttonEnabled = false;
-        jsonWrite(configSetup, "button_on", (int) buttonEnabled);
-		saveConfig();
-        sendCurrent(inputBuffer);
-      }
+     String configHardware = readFile(F("config_hardware.json"), 2048);
+
+    if (strstr_P(inputBuffer, PSTR("ON")) - inputBuffer == 4)
+  {
+    buttonEnabled = true;
+    jsonWrite(configHardware, "button_on", (int)buttonEnabled);
+    writeFile(F("config_hardware.json"), configHardware);
+    sendCurrent(inputBuffer);
+  }
+  else
+  {
+    buttonEnabled = false;
+    jsonWrite(configHardware, "button_on", (int)buttonEnabled);
+    writeFile(F("config_hardware.json"), configHardware);
+    sendCurrent(inputBuffer);
+  }
 
       #if USE_MQTT
       if (espMode == 1U)
@@ -1067,155 +1069,79 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       {
         LOG.println("\n*** Reset to Default ***");
         showWarning(CRGB::Red, 500, 250U);
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         setModeSettings();
         updateSets();    
         if(FileCopy (F("/default/config.json"), F("/config.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_cycle.json"), F("/config_cycle.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_sound.json"), F("/config_sound.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_alarm.json"), F("/config_alarm.json"))) {
-            #ifdef ESP32_USED
              esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-             #endif
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
-            #ifdef ESP32_USED
              esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-             #endif
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_multilamp.json"), F("/config_multilamp.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_ip.json"), F("/config_ip.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         if(FileCopy (F("/default/config_mqtt.json"), F("/config_mqtt.json"))) {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
         delay(100);

@@ -4,5 +4,12 @@
 "delay":10,
 "cur_lim":2000,
 "m_t":0,
-"m_o":0
+"m_o":0,
+"button_on":1,
+"mp3_on":1,
+"tm1637_on":0,
+"tft_on":1,
+"ir_on":1,
+"rtc_on":0,
+"show_weather": 1
 }

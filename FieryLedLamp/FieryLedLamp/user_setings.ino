@@ -82,7 +82,12 @@ void User_setings ()  {
  HTTP.on("/fold_sel", handle_folder_select);  // Выбор папки озвучивания на главной странице
  HTTP.on("/eq", handle_equalizer);  // Эквалайзер
  HTTP.on("/test", handle_test); // Настройка таймингов DF-Playera (озвучивание времени)
+ HTTP.on("/mp3_on", handle_mp3_on); // Включение/выключение MP3-плеера в настройках оборудования
  #endif
+ HTTP.on("/tm1637_on", handle_tm1637_on); // Включение/выключение дисплея TM1637 в настройках оборудования
+ HTTP.on("/tft_on", handle_tft_on); // Включение/выключение дисплея TFT в настройках оборудования
+ HTTP.on("/ir_on", handle_ir_on); // Включение/выключение ИК-приёмника в настройках оборудования
+ HTTP.on("/rtc_on", handle_rtc_on); // Включение/выключение модуля RTC в настройках оборудования
  HTTP.on("/cur_lim", handle_current_limit);  // выбор лимита тока матрицы
  HTTP.on("/m_t", handle_matrix_tipe);        // выбор типа матрицы
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
@@ -315,6 +320,17 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   return;
 #endif
 
+  if (!inClockWeatherMode) {
+    doc["text"] = "—";
+    doc["temp"] = -999;
+    doc["init"] = false;
+    doc["city"] = weatherCity;
+    doc["provider"] = actualYandex ? "yandex" : "openweather";
+    serializeJson(doc, out);
+    HTTP.send(200, "application/json", out);
+    return;
+  }
+
   if (currentTemp > -999) {
     String source = preferYandex ? "Яндекс" : "OpenWeather";
     String text = source + ": " + String((int)round(currentTemp)) + "°C";
@@ -344,6 +360,19 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
     String key = HTTP.arg("key");
     String value = HTTP.arg("value");
     LOG.printf("[SAVE] %s = %s\n", key.c_str(), value.c_str());
+
+    if (key == "show_weather") {
+      String configHardware = readFile(F("config_hardware.json"), 2048);
+      inClockWeatherMode = (value == "1");
+      jsonWrite(configHardware, "show_weather", inClockWeatherMode ? 1 : 0);
+      writeFile(F("config_hardware.json"), configHardware);
+      if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
+        weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 1000;
+      }
+      HTTP.send(200, "text/plain", "OK");
+      return;
+    }
+
     jsonWrite(configSetup, key, value);
     saveConfig();
 
@@ -351,12 +380,6 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
    else if (key == "yandex_geo") yandexGeoId = value;
     else if (key == "city")                weatherCity = value;
     else if (key == "prefer_yandex") preferYandex = (value == "1");
-    else if (key == "show_weather") {
-      inClockWeatherMode = (value == "1");
-      if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
-        weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 1000;
-      }
-    }
     HTTP.send(200, "text/plain", "OK");
   });
 
@@ -408,30 +431,13 @@ HTTP.on("/heap", HTTP_GET, []() {
   bool     hasPsram    = false;
   String   chip        = "unknown";
 
-  #ifdef ESP8266_USED
-    freeHeap = ESP.getFreeHeap();
-    totalHeap = 78000;                    // реальное значение для 2M/1M OTA
-    chip = "ESP8266";
-
-  #elif defined(ESP32_USED)
-
-    totalHeap = ESP.getHeapSize();
-
-    #ifdef ESP32_S3_USED
+  totalHeap = ESP.getHeapSize();
+  if (psramFound()) {
     totalPsram = ESP.getPsramSize();
     freePsram  = ESP.getFreePsram();
     hasPsram   = true;
-    chip       = "ESP32-S3";
-#else
-
-      if (psramFound()) {
-        totalPsram = ESP.getPsramSize();
-        freePsram  = ESP.getFreePsram();
-        hasPsram   = true;
-      }
-      chip = "ESP32";
-  #endif
-  #endif
+  }
+  chip = "ESP32-S3";
 
   doc["chip"]        = chip;
   doc["free"]        = freeHeap;
@@ -460,11 +466,7 @@ HTTP.on("/heap", HTTP_GET, []() {
     #endif
 
     // Доп инфа
-    #ifdef ESP32
-  doc["chip"] = "ESP32";
-#else
-  doc["chip"] = "ESP8266";
-#endif
+    doc["chip"] = "ESP32-S3";
 
     doc["cpu_freq"] = ESP.getCpuFreqMHz();
     doc["flash_size"] = ESP.getFlashChipSize() / 1024 / 1024;
@@ -506,61 +508,15 @@ HTTP.on("/heap", HTTP_GET, []() {
 
     // Проверка версии
 HTTP.on("/check_update", HTTP_GET, []() {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(256);
+  doc["current_version"] = String(F(VERSION));
+
   String resp;
-  doc["current_version"] = String(VERSION);
-#ifdef CUR_VERSION
-  doc["current_ver"] = CUR_VERSION;
-#endif
-
-  if (WiFi.status() == WL_CONNECTED) {
-    
-#ifdef LATEST_CUR_URL
-    String curUrl = LATEST_CUR_URL;
-    WiFiClient client2;
-    client2.connect(curUrl.substring(7, curUrl.indexOf('/', 7)).c_str(), 80);  // HTTP порт 80
-    if (client2.connected()) {
-      client2.print(String("GET ") + curUrl + " HTTP/1.1\r\n" +
-                    "Host: " + curUrl.substring(7, curUrl.indexOf('/', 7)) + "\r\n" +
-                    "User-Agent: FieryLedLamp\r\n" +
-                    "Connection: close\r\n\r\n");
-
-      String line;
-      String payload = "";
-      bool headersEnded = false;
-      while (client2.connected()) {
-        line = client2.readStringUntil('\n');
-        if (!headersEnded) {
-          if (line == "\r") headersEnded = true;
-        } else {
-          payload += line;
-        }
-      }
-      client2.stop();
-
-      int ln1 = payload.indexOf('\n');
-      int ln2 = payload.indexOf('\n', ln1 + 1);
-      if (ln1 > 0 && ln2 > ln1) {
-        String latest_cur_ver = payload.substring(0, ln1);
-        String latest_cur_date = payload.substring(ln1 + 1, ln2);
-        String latest_cur_link = payload.substring(ln2 + 1);
-        latest_cur_link.trim();
-        doc["latest_cur"] = latest_cur_ver;
-        doc["latest_cur_date"] = latest_cur_date;
-        doc["latest_cur_url"] = latest_cur_link;
-#ifdef CUR_VERSION
-        doc["has_cur_update"] = (latest_cur_ver != CUR_VERSION);
-#else
-        doc["has_cur_update"] = true;
-#endif
-      }
-    }
-#endif
-  }
-
   serializeJson(doc, resp);
   HTTP.send(200, "application/json; charset=utf-8", resp);
 });
+
+  OtaPackageInit();
 
 }
 
@@ -666,13 +622,12 @@ void handle_tft_ticker_text() {
 #endif
 
 void handle_button_on() {
-  jsonWrite(configSetup, "button_on", HTTP.arg("button_on").toInt());
-  #if USE_BUTTON
-  saveConfig();  
-  buttonEnabled = jsonReadtoInt(configSetup, "button_on");
-  #endif // USE_BUTTON
-  HTTP.send(200, F("text/plain"), F("OK"));
- }
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    buttonEnabled = HTTP.arg("button_on").toInt();
+    jsonWrite(configHardware, "button_on", buttonEnabled);
+    writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
 
 void handle_ESP_mode() { 
   jsonWrite(configSetup, "ESP_mode", HTTP.arg("ESP_mode").toInt());
@@ -1124,6 +1079,7 @@ void handle_time_zone() {     // Установка параметров вре�
 void handle_alarm ()  { 
     char i[3];
     String configAlarm = readFile(F("config_alarm.json"), 512); 
+    bool saveRequest = HTTP.hasArg("t") || HTTP.hasArg("after") || HTTP.hasArg("a_br"); 
     for (uint8_t k=0; k<7; k++) {
         itoa(k + 1, i, 10);
         //i[1] = 0;
@@ -1131,7 +1087,7 @@ void handle_alarm ()  {
         String h = "h" + String (i) ;
         String m = "m" + String (i) ;
         //сохранение параметров в строку
-        if (!first_entry){  
+        if (saveRequest){  
         jsonWrite(configAlarm, a, HTTP.arg(a).toInt());
         jsonWrite(configAlarm, h, HTTP.arg(h).toInt());
         jsonWrite(configAlarm, m, HTTP.arg(m).toInt());
@@ -1139,11 +1095,7 @@ void handle_alarm ()  {
     //сохранение установок будильника
     alarms[k].State = (jsonReadtoInt(configAlarm, a));
     alarms[k].Time = (jsonReadtoInt(configAlarm, h)) * 60 + (jsonReadtoInt(configAlarm, m));
-    #ifdef ESP32_USED
         esp_task_wdt_reset();
-        #else
-        ESP.wdtFeed();
-        #endif
         yield();
     }
     if (!first_entry) {
@@ -1154,7 +1106,16 @@ void handle_alarm ()  {
     dawnMode = jsonReadtoInt(configAlarm, "t")-1;
     DAWN_TIMEOUT = jsonReadtoInt(configAlarm, "after");
     DAWN_BRIGHT = jsonReadtoInt(configAlarm, "a_br");
-    if (!first_entry)
+    if (!first_entry) {
+      manualOff = false;
+      dawnFlag = 0;
+      dawnCounter = 0;
+      for (uint8_t j = 0U; j < 6U; j++) {
+        dawnColor[j] = 0;
+      }
+    }
+
+    if (saveRequest)
         {
          writeFile(F("config_alarm.json"), configAlarm );
         }
@@ -1164,6 +1125,7 @@ void handle_alarm ()  {
 void handle_sunset ()  { 
     char i[3];
     String configSunset = readFile(F("config_sunset.json"), 512); 
+    bool saveRequest = HTTP.hasArg("t") || HTTP.hasArg("s_br"); 
     for (uint8_t k=0; k<7; k++) {
         itoa(k + 1, i, 10);
         //i[1] = 0;
@@ -1171,7 +1133,7 @@ void handle_sunset ()  {
         String h = "h" + String (i) ;
         String m = "m" + String (i) ;
         //сохранение параметров в строку
-        if (!first_entry){  
+        if (saveRequest){  
         jsonWrite(configSunset, a, HTTP.arg(a).toInt());
         jsonWrite(configSunset, h, HTTP.arg(h).toInt());
         jsonWrite(configSunset, m, HTTP.arg(m).toInt());
@@ -1179,11 +1141,7 @@ void handle_sunset ()  {
     //сохранение установок будильника
     sunsets[k].State = (jsonReadtoInt(configSunset, a));
     sunsets[k].Time = (jsonReadtoInt(configSunset, h)) * 60 + (jsonReadtoInt(configSunset, m));
-    #ifdef ESP32_USED
         esp_task_wdt_reset();
-        #else
-        ESP.wdtFeed();
-        #endif
         yield();
     }
     if (!first_entry) {
@@ -1192,10 +1150,19 @@ void handle_sunset ()  {
     } 
     sunsetMode = jsonReadtoInt(configSunset, "t")-1;
     SUNSET_BRIGHT = jsonReadtoInt(configSunset, "s_br");
-    if (!first_entry)
-        {
-         writeFile(F("config_sunset.json"), configSunset );
-        }
+    if (!first_entry) {
+      manualsOff = false;
+      sunsetFlag = 0;
+      sunsetCounter = 0;
+      for (uint8_t j = 0U; j < 6U; j++) {
+        sunsetColor[j] = 0;
+      }
+    }
+
+    if (saveRequest)
+     {
+   writeFile(F("config_sunset.json"), configSunset );
+    }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
@@ -1207,11 +1174,7 @@ void save_alarms()   {
      LOG.println (F("\nТекущие установки будильника"));
      LOG.println(configAlarm);
     #endif
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (byte i = 0; i < 7; i++) {
         itoa ((i+1), k, 10);
         k[1] = 0;
@@ -1250,11 +1213,7 @@ void save_sunsets()   {
      LOG.println (F("\nТекущие установки заката"));
      LOG.println(configSunset);
     #endif
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (byte i = 0; i < 7; i++) {
         itoa ((i+1), k, 10);
         k[1] = 0;
@@ -1341,11 +1300,7 @@ void handle_eff_all ()   {  //Выбрать все эффекты
     char i[4];
     String configCycle = readFile(F("config_cycle.json"), 2048); 
     // подготовка  строк с именами полей json 
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (uint8_t k=0; k<MODE_AMOUNT; k++) {
         itoa ((k), i, 10);
         String e = "e" + String (i) ;
@@ -1361,11 +1316,7 @@ void handle_eff_clr ()   {  //очистить все эффекты
       char i[4];
       String configCycle = readFile(F("config_cycle.json"), 2048); 
       // подготовка  строк с именами полей json 
-      #ifdef ESP32_USED
-       esp_task_wdt_reset();
-      #else
-       ESP.wdtFeed();
-      #endif
+      esp_task_wdt_reset();
       for (uint8_t k=0; k<MODE_AMOUNT; k++)
       {
         itoa ((k), i, 10);
@@ -1386,11 +1337,7 @@ void handle_cycle_set ()  {  // Выбор эффектов для Цикла
       LOG.println(configCycle);
       #endif*/
       // подготовка  строк с именами полей json file
-      #ifdef ESP32_USED
-       esp_task_wdt_reset();
-      #else
-       ESP.wdtFeed();
-      #endif
+      esp_task_wdt_reset();
       for (uint8_t k=0; k<MODE_AMOUNT; k++) {
        itoa ((k), i, 10);
           String e = "e" + String (i) ;
@@ -1421,11 +1368,7 @@ void cycle_get ()  { // сохранение выбранных эффектов
       LOG.println(configCycle);
       #endif*/
       // подготовка  строк с именами полей json file
-      #ifdef ESP32_USED
-       esp_task_wdt_reset();
-      #else
-       ESP.wdtFeed();
-      #endif
+      esp_task_wdt_reset();
       for (uint8_t k=0; k<MODE_AMOUNT; k++) {
          itoa ((k), i, 10);
          String e = "e" + String (i) ;
@@ -1480,11 +1423,7 @@ void handle_rnd ()   { // Установка случайных настроек
 void handle_all_br ()   {  //Общая яркость
     jsonWrite(configSetup, "all_br", HTTP.arg("all_br").toInt());
     uint8_t ALLbri = jsonReadtoInt(configSetup, "all_br");
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (uint8_t i = 0; i < MODE_AMOUNT; i++) {
         modes[i].Brightness = ALLbri;    
       }
@@ -1685,11 +1624,7 @@ void handle_eff_save ()   {
         LOG.println (F("Настройки эффектов сохранены в файл"));
         #endif //GENERAL_DEBUG
         showWarning(CRGB::Blue, 2000U, 500U);                    // мигание синим цветом 2 секунды
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         yield();
     }
     else   {
@@ -1707,11 +1642,7 @@ void handle_eff_read ()   {
     if (file)   {
         uint16_t file_size = file.size();
         if ((file_size/3) < MODE_AMOUNT) file_size -= 6;
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         for (uint8_t i = 0; i < (file_size/3); i++) {
            modes[i].Brightness = file.read ();
            modes[i].Speed = file.read ();
@@ -1815,7 +1746,9 @@ void handle_on_sound ()   {
 void handle_volume ()   {
     eff_volume = HTTP.arg("vol").toInt();
     jsonWrite(configSetup, "vol", eff_volume);
-    if (!dawnflag_sound) send_command(6,FEEDBACK,0,eff_volume); //Громкость
+    if (mp3_player_connect == 4 && !dawnflag_sound && !sunsetflag_sound && !advert_flag) {
+    send_command(6, FEEDBACK, 0, eff_volume);
+    }
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1914,11 +1847,7 @@ void handle_sound_set ()   {    // Выбор папок для озвучива
     LOG.println(configSound);
     #endif*/
     // подготовка  строк с именами полей json file
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (uint8_t k=0; k<MODE_AMOUNT; k++) {
         itoa ((k), i, 10);
         String e = "e" + String (i) ;
@@ -1933,11 +1862,7 @@ void handle_sound_set ()   {    // Выбор папок для озвучива
     //LOG.println (F("\nВыбор папок для озвучивания эффектов после обработки"));
     //LOG.println(configSound);
     //LOG.print (F("Массив effects_folders [ "));
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     for (uint8_t k=0; k<MODE_AMOUNT; k++){
         LOG.print (effects_folders[k]);
         LOG.print (F(", "));
@@ -1955,6 +1880,8 @@ void handle_folder_down ()   {
     if (true) { //(!pause_on && !mp3_stop && eff_sound_on) {
         CurrentFolder = constrain(CurrentFolder-1, 0, 99);
         jsonWrite(configSetup, "fold_sel", CurrentFolder);
+        timeout_save_file_changes = millis();
+        bitSet(save_file_changes, 0);
         if (!pause_on && !mp3_stop && eff_sound_on) {
           send_command(0x17,FEEDBACK,0,CurrentFolder);           // Включить непрерывное воспроизведение указанной папки
           delay(mp3_delay);
@@ -1974,6 +1901,8 @@ void handle_folder_up ()   {
     if (true) { //(!pause_on && !mp3_stop && eff_sound_on) {
         CurrentFolder = constrain(CurrentFolder+1, 0, 99);
         jsonWrite(configSetup, "fold_sel", CurrentFolder);
+        timeout_save_file_changes = millis();
+        bitSet(save_file_changes, 0);
         if (!pause_on && !mp3_stop && eff_sound_on) {
           send_command(0x17,FEEDBACK,0,CurrentFolder);           // Включить непрерывное воспроизведение указанной папки
           delay(mp3_delay);
@@ -1993,6 +1922,8 @@ void handle_folder_select()   {
     if (true) { //(!pause_on && !mp3_stop && eff_sound_on) {
         CurrentFolder = HTTP.arg("fold_sel").toInt();          // Выбранная папка
         jsonWrite(configSetup, "fold_sel", CurrentFolder);
+        timeout_save_file_changes = millis();
+        bitSet(save_file_changes, 0);
         if (!pause_on && !mp3_stop && eff_sound_on) {
           send_command(0x17,FEEDBACK,0,CurrentFolder);           // Включить непрерывное воспроизведение указанной папки
           delay(mp3_delay);
@@ -2070,7 +2001,104 @@ void handle_test ()   {
     #endif*/
 }
 
+void handle_mp3_on ()   {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    mp3_player_on = HTTP.arg("mp3_on").toInt();
+    jsonWrite(configHardware, "mp3_on", mp3_player_on);
+    writeFile(F("config_hardware.json"), configHardware );
+
+    if (!mp3_player_on) {
+      if (mp3_player_connect == 4) {
+        send_command(0x16,FEEDBACK,0,0);
+        delay(mp3_delay);
+      }
+      mp3_player_connect = 0;
+      mp3_stop = true;
+      pause_on = true;
+      alarm_sound_flag = false;
+      sunset_sound_flag = false;
+      advert_flag = false;
+    }
+    else if (mp3_player_connect == 0) {
+      mp3_timer = millis();
+      mp3_player_connect = 1;
+    }
+
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
 #endif // USE_MP3_PLAYER
+
+void handle_tm1637_on ()   {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    tm1637_on = HTTP.arg("tm1637_on").toInt();
+    jsonWrite(configHardware, "tm1637_on", tm1637_on);
+    writeFile(F("config_hardware.json"), configHardware );
+#if USE_TM1637
+    if (!tm1637_on) {
+      display.clear();
+      DisplayFlag = 0;
+    } else {
+      display.setBrightness(DispBrightness);
+      display.displayByte(_dash, _dash, _dash, _dash);
+      tmr_clock = millis();
+    }
+#endif
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_tft_on ()   {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    tft_on = HTTP.arg("tft_on").toInt();
+    jsonWrite(configHardware, "tft_on", tft_on);
+    writeFile(F("config_hardware.json"), configHardware );
+#if USE_TFT
+    if (tft_on) {
+      TFT_Init();
+      tftShowStartText();
+    } else {
+      TFT_PowerOff();
+    }
+#endif
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_ir_on ()   {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    ir_on = HTTP.arg("ir_on").toInt();
+    jsonWrite(configHardware, "ir_on", ir_on);
+    writeFile(F("config_hardware.json"), configHardware );
+#if USE_IR_RECEIVER
+    if (ir_on) {
+      irrecv.enableIRIn();
+      IR_Tick_Timer = millis();
+      IR_Repeat_Timer = millis();
+      lastIRtime = 0;
+    } else {
+      IR_Tick_Timer = 0;
+      IR_Repeat_Timer = 0;
+      lastIRtime = 0;
+    }
+#endif
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_rtc_on ()   {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    rtc_on = HTTP.arg("rtc_on").toInt();
+    jsonWrite(configHardware, "rtc_on", rtc_on);
+    writeFile(F("config_hardware.json"), configHardware );
+#if USE_RTC
+    if (rtc_on) {
+      hasRtc = true;
+      timeSynched = false;
+    } else {
+      hasRtc = false;
+      timeSynched = false;
+    }
+#endif
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
 
 
 void handle_current_limit ()   {
@@ -2109,155 +2137,79 @@ void handle_matrix_orientation ()   {
 void handle_reset_to_default ()   {
     LOG.println("\n*** Reset to Default ***");
     showWarning(CRGB::Red, 500, 250U);
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     setModeSettings();
     updateSets();    
     if(FileCopy (F("/default/config.json"), F("/config.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_cycle.json"), F("/config_cycle.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_sound.json"), F("/config_sound.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_alarm.json"), F("/config_alarm.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_sunset.json"), F("/config_sunset.json"))) {
-            #ifdef ESP32_USED
              esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-             #endif
             showWarning(CRGB::Green, 500, 250U);
         }
         else {
-            #ifdef ESP32_USED
-             esp_task_wdt_reset();
-            #else
-             ESP.wdtFeed();
-            #endif
+            esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
     if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_multilamp.json"), F("/config_multilamp.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_ip.json"), F("/config_ip.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     if(FileCopy (F("/default/config_mqtt.json"), F("/config_mqtt.json"))) {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);
     }
     else {
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         showWarning(CRGB::Red, 500, 250U);
     }
     HTTP.send(200, F("text/plain"), F("OK"));
@@ -2461,7 +2413,8 @@ void handle_ir_status() {
   const char* ir_status;
 
 #if USE_IR_RECEIVER
-  ir_status = (millis() - lastIRtime < 5000) ? "OK" : "ОЖИДАЕТ КОМАНДУ";
+  if (!ir_on) ir_status = "ОТКЛЮЧЕН В НАСТРОЙКАХ";
+  else ir_status = (millis() - lastIRtime < 5000) ? "OK" : "ОЖИДАЕТ КОМАНДУ";
 #else
   ir_status = "ОТКЛЮЧЕН";
 #endif
@@ -2479,8 +2432,8 @@ void handle_tm1637_status() {
   bool connected = false;
 
 #if USE_TM1637
-  connected = true;
-  status = "ВКЛЮЧЕН";
+  connected = tm1637_on;
+  status = tm1637_on ? "ВКЛЮЧЕН" : "ОТКЛЮЧЕН В НАСТРОЙКАХ";
 #else
   status = "ОТКЛЮЧЕН";
 #endif
@@ -2498,8 +2451,8 @@ void handle_tft_status() {
   bool connected = false;
 
 #if USE_TFT
-  connected = true;
-  status = "ВКЛЮЧЕН";
+  connected = tft_on;
+  status = tft_on ? "ВКЛЮЧЕН" : "ОТКЛЮЧЕН В НАСТРОЙКАХ";
 #else
   status = "ОТКЛЮЧЕН";
 #endif
@@ -2518,8 +2471,8 @@ void handle_rtc_status() {
   bool connected = false;
 
 #if USE_RTC
-  connected = true;
-  status = "ВКЛЮЧЕН";
+  connected = rtc_on && hasRtc;
+  status = rtc_on ? (hasRtc ? "ВКЛЮЧЕН" : "НЕТ СВЯЗИ") : "ОТКЛЮЧЕН В НАСТРОЙКАХ";
 #else
   status = "ОТКЛЮЧЕН";
 #endif
@@ -2538,8 +2491,14 @@ void handle_mp3_status() {
 
 #if USE_MP3_PLAYER
 
-  if (mp3_player_connect == 0) {
+  if (!mp3_player_on) {
+    status = "ОТКЛЮЧЕН В НАСТРОЙКАХ";
+  }
+  else if (mp3_player_connect == 0) {
     status = "НЕТ СВЯЗИ";
+  }
+  else if (mp3_player_connect == 5) {
+    status = "ПОДКЛЮЧЕН, НЕТ SD/FLASH";
   }
   else if (mp3_player_connect != 4) {
     status = "ИНИЦИАЛИЗАЦИЯ...";
@@ -2557,6 +2516,7 @@ void handle_mp3_status() {
     status = "ГОТОВ";
   }
 
+  doc["enabled"] = mp3_player_on;
   doc["connect"] = mp3_player_connect;
   doc["folder"] = CurrentFolder;
   doc["volume"] = eff_volume;
@@ -2716,10 +2676,11 @@ void handle_ota_status() {
 
 // Статус погоды
 void handle_show_weather() {
+  String configHardware = readFile(F("config_hardware.json"), 2048);
   int enabled = HTTP.arg("show_weather").toInt();
   inClockWeatherMode = (enabled == 1);
-  jsonWrite(configSetup, "show_weather", enabled);
-  saveConfig();
+  jsonWrite(configHardware, "show_weather", enabled);
+  writeFile(F("config_hardware.json"), configHardware);
   if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
     weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 1000;
   }
@@ -2734,11 +2695,7 @@ bool FileCopy (const String& SourceFile , const String& TargetFile)   {
     size_t size = S_File.size();
     for (unsigned int i=0; i<size; i++)  {
         T_File.write(S_File.read ());
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
         yield();
     }
     S_File.close();
@@ -2760,11 +2717,7 @@ void EffectList (const String& efflist )   {
     LOG.print (F("EffList = "));
     LOG.println (EffList.c_str());
     #endif //GENERAL_DEBUG
-    #ifdef ESP32_USED
-     esp_task_wdt_reset();
-    #else
-     ESP.wdtFeed();
-    #endif
+    esp_task_wdt_reset();
     yield();
     R_File.close ();
 }

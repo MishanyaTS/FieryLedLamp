@@ -137,21 +137,13 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
         #if USE_BUTTON
           buttonTick();
         #endif
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
     }
     
     #if USE_MP3_PLAYER
     while (advert_flag) {
         play_time_ADVERT();
-        #ifdef ESP32_USED
-         esp_task_wdt_reset();
-        #else
-         ESP.wdtFeed();
-        #endif
+        esp_task_wdt_reset();
     }
     //first_entry = 0;
     #endif  // USE_MP3_PLAYER
@@ -218,11 +210,7 @@ void printWeather(uint32_t thisTime, bool onDemand, bool ONflag)
       #if USE_BUTTON
         buttonTick();
       #endif
-      #ifdef ESP32_USED
-        esp_task_wdt_reset();
-      #else
-        ESP.wdtFeed();
-      #endif
+      esp_task_wdt_reset();
     }
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
       digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);

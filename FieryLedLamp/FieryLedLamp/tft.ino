@@ -1,6 +1,7 @@
 #if USE_TFT
 
 #include <TFT_eSPI.h>
+#include <TJpg_Decoder.h>
 
 extern uint8_t tft_clock_color;
 extern uint8_t tft_weather_color;
@@ -9,6 +10,7 @@ extern uint8_t  tft_ticker_color;
 extern uint16_t tft_ticker_speed;
 extern uint16_t tft_ticker_period;
 extern char     TFTTickerText[128];
+extern uint8_t  tft_on;
 
 static inline uint16_t tftColorFromId(uint8_t id) {
   switch (id) {
@@ -21,6 +23,19 @@ static inline uint16_t tftColorFromId(uint8_t id) {
     case 5: return TFT_BLUE;
     case 6: return TFT_MAGENTA;
     case 7: return 0xFD20; // оранжевый (RGB565)
+    case 8: return TFT_DARKGREEN;
+    case 9: return TFT_DARKCYAN;
+    case 10: return TFT_MAROON;
+    case 11: return TFT_PURPLE;
+    case 12: return TFT_OLIVE;
+    case 13: return TFT_LIGHTGREY;
+    case 14: return TFT_GREENYELLOW;
+    case 15: return TFT_PINK;
+    case 16: return TFT_BROWN;
+    case 17: return TFT_GOLD;
+    case 18: return TFT_SILVER;
+    case 19: return TFT_SKYBLUE;
+    case 20: return TFT_VIOLET;
   }
 }
 static TFT_eSPI tft = TFT_eSPI();
@@ -30,18 +45,22 @@ static uint8_t tftDispBrightness = 255;
 static bool    tftBreathDir = true;
 static uint32_t tftBlinkTmr = 0;
 
-#if defined(ESP32)
-  static const uint8_t TFT_BL_CH = 7;
-  static const uint16_t TFT_BL_FREQ = 5000;
-  static const uint8_t TFT_BL_BITS = 8;
-#endif
+static const uint8_t TFT_BL_CH = 7;
+static const uint16_t TFT_BL_FREQ = 5000;
+static const uint8_t TFT_BL_BITS = 8;
 
 static inline void tftBacklightWrite(uint8_t val) {
-  #if defined(ESP32)
-    ledcWrite(TFT_BL_CH, val);
-  #else
-    (void)val;
-  #endif
+  ledcWrite(TFT_BL_CH, val);
+}
+
+void TFT_PowerOff() {
+  if (tftInited) {
+    tft.fillScreen(TFT_BLACK);
+  }
+  pinMode(TFT_PIN_BL, OUTPUT);
+  digitalWrite(TFT_PIN_BL, LOW);
+  tftBacklightWrite(0);
+  tftInited = false;
 }
 
 enum TFT_View : uint8_t {
@@ -74,8 +93,6 @@ static char     tftIPBuf[24] = {0};
 
 
 // ------------------- TFT ticker (бегущая строка) -------------------
-static constexpr int16_t TFT_W = 320;
-static constexpr int16_t TFT_H = 172;
 static constexpr uint8_t  TFT_TICKER_FONT = 1;
 static constexpr uint8_t  TFT_TICKER_SIZE = 9;
 static constexpr int16_t  TFT_TICKER_SPR_H = (int16_t)(8 * TFT_TICKER_SIZE + 2);
@@ -114,7 +131,7 @@ static void tftTickerEnsureSprite() {
   if (tftTickerSprReady) return;
 
   tftTickerSpr.setColorDepth(16);
-  tftTickerSprReady = tftTickerSpr.createSprite(TFT_W, TFT_TICKER_SPR_H);
+  tftTickerSprReady = tftTickerSpr.createSprite(tft.width(), TFT_TICKER_SPR_H);
 }
 
 static void tftTickerApplyTextStyle() {
@@ -130,7 +147,7 @@ static void tftTickerStart() {
   tftTickerApplyTextStyle();
   tftTickerW = tftTickerSpr.textWidth(TFTTickerText);
   if (tftTickerW < 1) tftTickerW = 1;
-  tftTickerX = TFT_W;
+  tftTickerX = tft.width();
   tftTickerLastUs = micros();
   tftTickerAccPxUs = 0;
   tft.fillScreen(TFT_BLACK);
@@ -150,7 +167,7 @@ static void tftTickerDrawFrame() {
   tftTickerSpr.fillSprite(TFT_BLACK);
   tftTickerApplyTextStyle();
   tftTickerSpr.drawString(TFTTickerText, tftTickerX, 0);
-  const int16_t y = (TFT_H - TFT_TICKER_SPR_H) / 2;
+  const int16_t y = (tft.height() - TFT_TICKER_SPR_H) / 2;
   tftTickerSpr.pushSprite(0, y);
 }
 
@@ -329,11 +346,47 @@ static void tftDrawIP(const char* ip) {
   tft.print(ipStr);
 }
 
+static bool tftJpgOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
+  if (!tft_on || !tftInited) return false;
+  tft.pushImage(x, y, w, h, bitmap);
+  return true;
+}
+
+static bool tftDrawJpgFromFS(const char* path) {
+  if (!tft_on || !tftInited || !path || !path[0]) return false;
+  File f = LittleFS.open(path, "r");
+  if (!f) return false;
+  size_t sz = f.size();
+  if (!sz) {
+    f.close();
+    return false;
+  }
+
+  uint8_t* jpgBuf = (uint8_t*)malloc(sz);
+  if (!jpgBuf) {
+    f.close();
+    return false;
+  }
+  
+  size_t rd = f.read(jpgBuf, sz);
+  f.close();
+  if (rd != sz) {
+    free(jpgBuf);
+    return false;
+  }
+
+  tft.fillScreen(TFT_BLACK);
+  JRESULT rc = TJpgDec.drawJpg(0, 0, jpgBuf, sz);
+  free(jpgBuf);
+  return (rc == JDR_OK);
+}
+
 void tftShowStartText() {
+  if (tftDrawJpgFromFS("/start.jpg")) return;
   tft.fillScreen(TFT_BLACK);
   tft.setTextFont(2);
   tft.setTextSize(3);
-  tft.setTextColor(TFT_WHITE);
+  tft.setTextColor(TFT_GOLD);
   String s = "Fiery Led Lamp";
   int x = (tft.width()  - tft.textWidth(s)) / 2;
   int y = (tft.height() - tft.fontHeight()) / 2;
@@ -342,21 +395,20 @@ void tftShowStartText() {
 }
 // ------------------- API -------------------
 void TFT_Init() {
+  if (!tft_on) return;
 
-  #if defined(ESP32)
-    pinMode(TFT_PIN_BL, OUTPUT);
-    digitalWrite(TFT_PIN_BL, LOW);
-  #endif
+  pinMode(TFT_PIN_BL, OUTPUT);
+  digitalWrite(TFT_PIN_BL, LOW);
 
   tft.init();
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
   tft.setSwapBytes(true);
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setCallback(tftJpgOutput);
 
-  #if defined(ESP32)
-    ledcSetup(TFT_BL_CH, TFT_BL_FREQ, TFT_BL_BITS);
-    ledcAttachPin(TFT_PIN_BL, TFT_BL_CH);
-  #endif
+  ledcSetup(TFT_BL_CH, TFT_BL_FREQ, TFT_BL_BITS);
+  ledcAttachPin(TFT_PIN_BL, TFT_BL_CH);
 
   tftBacklightWrite(255);
   tftDispBrightness = 255;
@@ -380,7 +432,7 @@ void TFT_Init() {
 }
 
 void TFT_ShowIP(const char* ip) {
-  if (!tftInited) return;
+  if (!tft_on || !tftInited) return;
   if (!ip) ip = "";
   strncpy(tftIPBuf, ip, sizeof(tftIPBuf) - 1);
   tftIPBuf[sizeof(tftIPBuf) - 1] = 0;
@@ -392,8 +444,8 @@ void TFT_ShowIP(const char* ip) {
 }
 
 void TFT_HideIP() {
+  if (!tft_on || !tftInited) return;
   tft.fillScreen(TFT_BLACK);
-  if (!tftInited) return;
   tftShowIP = false;
   tftTickerNextStart = millis() + tftTickerPeriodMs();
   tftTickerActive = false;
@@ -401,6 +453,7 @@ void TFT_HideIP() {
 }
 
 void TFT_Display_Timer(uint8_t argument) {
+  if (!tft_on || !tftInited) return;
   static uint16_t tftLastMode = 0xFFFF;
   static uint32_t tftEffectShowTmr = 0;
   static bool tftShowEffect = false;
@@ -604,13 +657,13 @@ static inline uint8_t tftGetDayNightTarget() {
 static void tftBrightnessTick();
 
 void TFT_ApplyBrightnessNow() {
-  if (!tftInited) return;
+  if (!tft_on || !tftInited) return;
   tftBlinkTmr = 0;
   tftBrightnessTick();
 }
 
 static void tftBrightnessTick() {
-  if (!tftInited) return;
+  if (!tft_on || !tftInited) return;
 
   const uint8_t target = tftGetDayNightTarget();
   const bool activeBreath = (dawnFlag == 1 || sunsetFlag == 1);
@@ -653,6 +706,7 @@ static void tftBrightnessTick() {
 }
 
 void TFT_LoopTick() {
+  if (!tft_on || !tftInited) return;
   tftBrightnessTick();
   tftTickerTick();
 

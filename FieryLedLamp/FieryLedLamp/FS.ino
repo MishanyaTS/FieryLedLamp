@@ -58,8 +58,6 @@ void handleFileUpload() {
     } else {
       LOG.println("Upload failed - no file open");
     }
-
-    HTTP.send(200, "text/plain", "OK");
   }
 }
 
@@ -93,7 +91,6 @@ void handleFileCreate() {
 
 }
 
-#ifdef ESP32_USED
 void handleFileList() {
   if (!HTTP.hasArg("dir")) {
     HTTP.send(500, F("text/plain"), F("BAD ARGS"));
@@ -125,38 +122,3 @@ void handleFileList() {
   output += "]";
   HTTP.send(200, F("text/json"), output);
 }
-#else
-
-void handleFileList() {
-  if (!HTTP.hasArg("dir")) {
-    HTTP.send(500, F("text/plain"), F("BAD ARGS"));
-    return;
-  }
-  String path = HTTP.arg("dir");
-  Dir dir = LittleFS.openDir(path);
-  path = String();
-  String output = "[";
-  while (dir.next()) {
-    File entry = dir.openFile("r");
-    if (output != "[") output += ',';
-#if defined (USE_LittleFS)
-    bool isDir = entry.isDirectory();
-#else
-    bool isDir = false;
-#endif
-    output += F("{\"type\":\"");
-    output += (isDir) ? F("dir") : F("file");
-    output += F("\",\"name\":\"");
-#if defined (USE_LittleFS)
-    output += String(entry.name()).substring(0);
-#else
-    output += String(entry.name()).substring(1);
-#endif
-    output += "\"}";
-    entry.close();
-//    isDir = false;
-  }
-  output += "]";
-  HTTP.send(200, F("text/json"), output);
-}
-#endif

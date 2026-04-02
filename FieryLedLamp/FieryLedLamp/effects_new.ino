@@ -2855,26 +2855,24 @@ void EffectStars() {
 #define CENTER_DRIFT_SPEED (6U)
   static uint8_t spd;
   static uint8_t points[STARS_NUM];
-  static float color[STARS_NUM] ;
+  static float color[STARS_NUM];
   static int delay_arr[STARS_NUM];
   static float counter;
   static float driftx;
-  static float  drifty;
+  static float drifty;
   static float cangle;
-  static float  sangle;
+  static float sangle;
   static uint8_t stars_count;
   static uint8_t blur;
 
   if (loadingFlag) {
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
     if (selectedSettings) {
-      //                     scale | speed
       setModeSettings(random8(100U), random8(80U, 255U));
     }
-#endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+#endif
     loadingFlag = false;
-    counter = 0.0;
-    // стартуем с центра
+
     driftx = (float)WIDTH / 2.0;
     drifty = (float)HEIGHT / 2.0;
 
@@ -2885,13 +2883,14 @@ void EffectStars() {
     stars_count = WIDTH / 2U;
 
     if (stars_count > STARS_NUM) stars_count = STARS_NUM;
+    counter = (float)(spd / 5 + 3U);
     for (uint8_t num = 0; num < stars_count; num++) {
       points[num] = map(modes[currentMode].Scale, 1, 255, 3U, 7U); //5; // random8(3, 6);                              // количество углов в звезде
       delay_arr[num] = spd / 5 + (num << 2) + 2U;               // задержка следующего пуска звезды
       color[num] = random8();
     }
   }
-  // fadeToBlackBy(leds, NUM_LEDS, 245);
+
   fadeToBlackBy(leds, NUM_LEDS, 165);
   float speedFactor = ((float)spd / 380.0 + 0.05);
   counter += speedFactor;                                                   // определяет то, с какой скоростью будет приближаться звезда
@@ -2899,15 +2898,20 @@ void EffectStars() {
   if (driftx > (WIDTH - spirocenterX / 2U)) cangle = 0 - fabs(cangle);      //change directin of drift if you get near the right 1/4 of the screen
   if (driftx < spirocenterX / 2U) cangle = fabs(cangle);                    //change directin of drift if you get near the right 1/4 of the screen
   if ((uint16_t)counter % CENTER_DRIFT_SPEED == 0) driftx = driftx + (cangle * speedFactor); //move the x center every so often
-  if (drifty > ( HEIGHT - spirocenterY / 2U)) sangle = 0 - fabs(sangle);    // if y gets too big, reverse
-  if (drifty < spirocenterY / 2U) sangle = fabs(sangle);                    // if y gets too small reverse
 
+  if (drifty > (HEIGHT - spirocenterY / 2U)) sangle = 0 - fabs(sangle);    // if y gets too big, reverse
+  if (drifty < spirocenterY / 2U) sangle = fabs(sangle);                   // if y gets too small reverse
   if ((uint16_t)counter % CENTER_DRIFT_SPEED == 0) drifty = drifty + (sangle * speedFactor); //move the y center every so often
 
   for (uint8_t num = 0; num < stars_count; num++) {
     if (counter >= delay_arr[num]) {              //(counter >= ringdelay)
       if (counter - delay_arr[num] <= WIDTH + 5) {
-        drawStar(driftx, drifty, 2 * (counter - delay_arr[num]), (counter - delay_arr[num]), points[num], STAR_BLENDER + color[num], color[num]);
+        drawStar(driftx, drifty,
+                 2 * (counter - delay_arr[num]),
+                 (counter - delay_arr[num]),
+                 points[num],
+                 STAR_BLENDER + color[num],
+                 color[num]);
         color[num] += speedFactor;                // в зависимости от знака - направление вращения
       } else {
         delay_arr[num] = counter + (stars_count << 1) + 1U; // задержка следующего пуска звезды
