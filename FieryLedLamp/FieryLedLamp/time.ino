@@ -110,7 +110,7 @@ if (stillUseNTP)
       printWeather(thisTime, false, ONflag); // периодический вывод погоды бегущей строкой
       if (last_minute != minute(currentLocalTime)
           #if USE_TM1637
-            && !DisplayFlag
+            && (!tm1637_on || !DisplayFlag)
           #endif
           ) {
         hours = hour(currentLocalTime);                   // получаем значение часов

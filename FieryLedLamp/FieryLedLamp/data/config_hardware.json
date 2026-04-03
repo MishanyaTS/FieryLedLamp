@@ -6,10 +6,20 @@
 "m_t":0,
 "m_o":0,
 "button_on":1,
+"button_type":"1",
 "mp3_on":1,
 "tm1637_on":0,
 "tft_on":1,
 "ir_on":1,
 "rtc_on":0,
-"show_weather": 1
+"show_weather": 1,
+"btn_click_power":1,
+"btn_click_next":2,
+"btn_click_prev":3,
+"btn_click_action4":4,
+"btn_click_ip":5,
+"btn_click_time":6,
+"btn_click_esp_mode":7,
+"btn_click_sound":8,
+"btn_click_weather":9
 }

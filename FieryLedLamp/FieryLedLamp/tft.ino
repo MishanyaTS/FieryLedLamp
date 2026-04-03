@@ -217,8 +217,11 @@ static void tftClear() {
 }
 
 static void tftDrawClock(bool colonOn) {
+  time_t currentLocalTime = getCurrentLocalTime();
+  uint8_t nowHour = hour(currentLocalTime);
+  uint8_t nowMinute = minute(currentLocalTime);
   char buf[6];
-  snprintf(buf, sizeof(buf), "%02d%c%02d", hours, colonOn ? ':' : ' ', last_minute);
+  snprintf(buf, sizeof(buf), "%02u%c%02u", nowHour, colonOn ? ':' : ' ', nowMinute);
   String s = String(buf);
   tft.setTextColor(tftColorFromId(tft_clock_color), TFT_BLACK);
   tft.setTextFont(7);
@@ -589,10 +592,18 @@ TFT_View view = TFT_VIEW_DASH;
   if (lastShowClockTFT != showClock) changed = true;
   if (lastTimeSynched != timeSynched) changed = true;
 
-  if (view == TFT_VIEW_CLOCK) {
-    if (lastMinuteTFT != last_minute || lastHourTFT != hours) changed = true;
-    if (lastColonTFT != tftColonState) changed = true;
-  }
+  int drawHourTFT = lastHourTFT;
+  int drawMinuteTFT = lastMinuteTFT;
+  if (timeSynched) {
+  time_t currentLocalTime = getCurrentLocalTime();
+  drawHourTFT = hour(currentLocalTime);
+  drawMinuteTFT = minute(currentLocalTime);
+}
+
+if (view == TFT_VIEW_CLOCK) {
+  if (lastMinuteTFT != drawMinuteTFT || lastHourTFT != drawHourTFT) changed = true;
+  if (lastColonTFT != tftColonState) changed = true;
+}
   if (view == TFT_VIEW_WEATHER) {
     int t = (int)round(currentTemp);
     if (t != lastTempTFT) changed = true;

@@ -32,7 +32,7 @@ void buttonTick()
   uint8_t clickCount = touch.hasClicks() ? touch.getClicks() : 0U;
 
   // однократное нажатие
-  if (clickCount == 1U)
+  if (clickCount == btn_click_power)
   {
     if (dawnFlag == 1) {
         #if USE_MP3_PLAYER
@@ -114,7 +114,7 @@ void buttonTick()
   }
 
   // двухкратное нажатие
-  if (clickCount == 2U){
+  if (clickCount == btn_click_next){
      #if USE_MP3_PLAYER
      if (dawnFlag == 1) {            //if (dawnFlag && alarm_sound_flag) {
         //myDFPlayer.pause();
@@ -189,7 +189,7 @@ void buttonTick()
   }
 
   // трёхкратное нажатие
-  if (ONflag && clickCount == 3U)
+  if (ONflag && clickCount == btn_click_prev)
   {
     uint8_t temp = jsonReadtoInt(configSetup, "eff_sel");
     if (Favorit_only) 
@@ -232,7 +232,7 @@ void buttonTick()
   }
 
   // четырёхкратное нажатие
-  if (clickCount == 4U)
+  if (clickCount == btn_click_action4)
   {
     #if USE_OTA
     if (otaManager.RequestOtaUpdate())
@@ -272,7 +272,7 @@ void buttonTick()
   }
 
   // пятикратное нажатие
-  if (clickCount == 5U)                                     // вывод IP на лампу
+  if (clickCount == btn_click_ip)                                     // вывод IP на лампу
   {
     if (espMode == 1U)
     {
@@ -335,14 +335,14 @@ void buttonTick()
 }
 
   // шестикратное нажатие
-  if (clickCount == 6U)                                     // вывод текущего времени бегущей строкой
+  if (clickCount == btn_click_time)                                     // вывод текущего времени бегущей строкой
   {
     printTime(thisTime, true, ONflag);
   }
 
 
   // семикратное нажатие
-  if (clickCount == 7U)  // if (ONflag &&                   // смена рабочего режима лампы: с WiFi точки доступа на WiFi клиент или наоборот
+  if (clickCount == btn_click_esp_mode)  // if (ONflag &&                   // смена рабочего режима лампы: с WiFi точки доступа на WiFi клиент или наоборот
   {
     #ifdef RESET_WIFI_ON_ESP_MODE_CHANGE
       if (espMode) wifiManager.resetSettings();                             // сброс сохранённых SSID и пароля (сброс настроек подключения к роутеру)
@@ -366,7 +366,7 @@ void buttonTick()
   #if USE_MP3_PLAYER
   
   // Восьмикратное нажатие
-  if (clickCount == 8U)  {                                  // Вкл / Откл звука
+  if (clickCount == btn_click_sound)  {                                  // Вкл / Откл звука
     if (mp3_player_connect == 4) {
       if (eff_sound_on) {
         eff_sound_on = 0;
@@ -399,7 +399,7 @@ void buttonTick()
   #endif  // USE_MP3_PLAYER
 
   // девятикратное нажатие
-  if (clickCount == 9U)                                     // вывод текущей погоды бегущей строкой
+  if (clickCount == btn_click_weather)                                     // вывод текущей погоды бегущей строкой
   {
     printWeather(thisTime, true, ONflag);
   }

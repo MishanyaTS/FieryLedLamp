@@ -6,6 +6,11 @@ void User_setings ()  {
  HTTP.on("/random_on", handle_random);  // случайных настроек эффектов в режиме цикл без сохранения в EEPROM
  HTTP.on("/print_time", handle_print_time); //Периодичность вывода времени бегущей строкой
  HTTP.on("/print_weather", handle_print_weather); // Периодичность вывода погоды бегущей строкой
+#if USE_BUTTON
+ HTTP.on("/save_btn_clicks", handle_save_btn_clicks); // Настройки действий по количеству нажатий на кнопку.
+ HTTP.on("/button_on", handle_button_on);  // Вкл/Выкл
+ HTTP.on("/button_type", handle_button_type); // Сенсорная / механическая кнопка
+#endif
 #if USE_TFT
  HTTP.on("/tft_clock_color", handle_tft_clock_color);   // Цвет часов на TFT
  HTTP.on("/tft_weather_color", handle_tft_weather_color); // Цвет погоды на TFT
@@ -15,7 +20,6 @@ void User_setings ()  {
  HTTP.on("/tft_ticker_period", handle_tft_ticker_period); // Период бегущаей строки на TFT
  HTTP.on("/tft_ticker_text", handle_tft_ticker_text); // Период бегущаей строки на TFT
 #endif
- HTTP.on("/button_on", handle_button_on);  // Вкл\Выкл кнопки лампы (дублирует в приложении, но на виду)
  HTTP.on("/ESP_mode", handle_ESP_mode); // Установка ESP Mode
  HTTP.on("/eff_reset", handle_eff_reset);  //сброс настроек эффектов по умолчанию
  HTTP.on("/run_text", handle_run_text);  // Текст для бегущей строки
@@ -559,7 +563,32 @@ void handle_print_time() {
     bitSet (save_file_changes, 0);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
- 
+
+#if USE_BUTTON
+void handle_save_btn_clicks() {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    btn_click_power = HTTP.arg("btn_click_power").toInt();
+    btn_click_next = HTTP.arg("btn_click_next").toInt();
+    btn_click_prev = HTTP.arg("btn_click_prev").toInt();
+    btn_click_action4 = HTTP.arg("btn_click_action4").toInt();
+    btn_click_ip = HTTP.arg("btn_click_ip").toInt();
+    btn_click_time = HTTP.arg("btn_click_time").toInt();
+    btn_click_esp_mode = HTTP.arg("btn_click_esp_mode").toInt();
+    btn_click_sound = HTTP.arg("btn_click_sound").toInt();
+    btn_click_weather = HTTP.arg("btn_click_weather").toInt();
+    jsonWrite(configHardware, "btn_click_power", btn_click_power);
+    jsonWrite(configHardware, "btn_click_next", btn_click_next);
+    jsonWrite(configHardware, "btn_click_prev", btn_click_prev);
+    jsonWrite(configHardware, "btn_click_action4", btn_click_action4);
+    jsonWrite(configHardware, "btn_click_ip", btn_click_ip);
+    jsonWrite(configHardware, "btn_click_time", btn_click_time);
+    jsonWrite(configHardware, "btn_click_esp_mode", btn_click_esp_mode);
+    jsonWrite(configHardware, "btn_click_sound", btn_click_sound);
+    jsonWrite(configHardware, "btn_click_weather", btn_click_weather);
+    writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+#endif
 
 #if USE_TFT
 void handle_tft_clock_color() {
@@ -626,6 +655,23 @@ void handle_button_on() {
     buttonEnabled = HTTP.arg("button_on").toInt();
     jsonWrite(configHardware, "button_on", buttonEnabled);
     writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_button_type() {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    button_type = HTTP.arg("button_type").toInt();
+    if (button_type > 1) button_type = 1;
+    jsonWrite(configHardware, "button_type", button_type);
+    writeFile(F("config_hardware.json"), configHardware);
+    if (button_type) {
+      touch.setType(LOW_PULL);
+      touch.setDebounce(BUTTON_SET_DEBOUNCE_SENSORY);
+    } else {
+      touch.setType(HIGH_PULL);
+      touch.setDebounce(BUTTON_SET_DEBOUNCE_MECHANICAL);
+    }
+    touch.setDirection(NORM_OPEN);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
@@ -2392,13 +2438,13 @@ void handle_button_status() {
   String response;
 
 #if USE_BUTTON
-  #if BUTTON_IS_SENSORY
+  if (button_type) {
     jsonWrite(configSetup, "button_status", "СЕНСОРНАЯ");
     doc["button_status"] = "СЕНСОРНАЯ";
-  #else
+  } else {
     jsonWrite(configSetup, "button_status", "МЕХАНИЧЕСКАЯ");
     doc["button_status"] = "МЕХАНИЧЕСКАЯ";
-  #endif
+  }
 #else
   jsonWrite(configSetup, "button_status", "ОТКЛЮЧЕНО");
   doc["button_status"] = "ОТКЛЮЧЕНО";

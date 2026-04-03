@@ -144,11 +144,7 @@ time_t phoneTimeLastSync;
 uint8_t selectedSettings = 0U;
 
 #if USE_BUTTON
-#if (BUTTON_IS_SENSORY == 1)
-GButton touch(BTN_PIN, LOW_PULL, NORM_OPEN);  // для сенсорной кнопки LOW_PULL
-#else
-GButton touch(BTN_PIN, HIGH_PULL, NORM_OPEN); // для физической (не сенсорной) кнопки HIGH_PULL. ну и кнопку нужно ставить без резистора в разрыв между пинами D2 и GND
-#endif
+GButton touch(BTN_PIN, LOW_PULL, NORM_OPEN);
 #endif
 
 #if USE_OTA
@@ -225,6 +221,18 @@ bool ONflag = false;
 //bool settChanged = false;
 #if USE_BUTTON
  bool buttonEnabled = true; // Вкл \ откл кнопки
+ uint8_t button_type = BUTTON_IS_SENSORY_DEFAULT;   // 0 - механическая, 1 - сенсорная
+
+ uint8_t btn_click_power        = 1U;  // Вкл/выкл лампы
+ uint8_t btn_click_next         = 2U;  // Следующий эффект
+ uint8_t btn_click_prev         = 3U;  // Предыдущий эффект
+ uint8_t btn_click_action4      = 4U;  // OTA / таймер сна
+ uint8_t btn_click_ip           = 5U;  // Показать IP
+ uint8_t btn_click_time         = 6U;  // Показать время
+ uint8_t btn_click_esp_mode     = 7U;  // Переключить WiFi режим
+ uint8_t btn_click_sound        = 8U;  // Вкл/выкл звук
+ uint8_t btn_click_weather      = 9U;  // Показать погоду
+
  #if defined(BUTTON_LOCK_ON_START)
   bool buttonBlocing = false;
  #endif
@@ -493,11 +501,11 @@ void setup()  //================================================================
 
 #if USE_BUTTON
 #if defined(BUTTON_LOCK_ON_START) && BUTTON_LOCK_ON_START
-#if (BUTTON_IS_SENSORY == 1)
-  if (digitalRead(BTN_PIN)) buttonEnabled = false;
-#else
-  if (!digitalRead(BTN_PIN)) buttonEnabled = false;
-#endif
+  if (button_type) {
+    if (digitalRead(BTN_PIN)) buttonEnabled = false;   // сенсорная
+  } else {
+    if (!digitalRead(BTN_PIN)) buttonEnabled = false;  // механическая
+  }
 #endif
 #endif
 
@@ -534,6 +542,8 @@ void setup()  //================================================================
     #if USE_BUTTON
     String buttonOnCfg = jsonRead(configHardware, "button_on");
     buttonEnabled = (buttonOnCfg.length() == 0) ? 1 : buttonOnCfg.toInt();
+    String buttonTypeCfg = jsonRead(configHardware, "button_type");
+    button_type = (buttonTypeCfg.length() == 0) ? BUTTON_IS_SENSORY_DEFAULT : buttonTypeCfg.toInt();
     #endif
     #if USE_TM1637
     String tm1637OnCfg = jsonRead(configHardware, "tm1637_on");
@@ -556,6 +566,18 @@ void setup()  //================================================================
     mp3_player_on = (mp3OnCfg.length() == 0) ? 1 : mp3OnCfg.toInt();
     #endif
   }
+  #if USE_BUTTON
+  if (button_type) {
+    touch.setType(LOW_PULL);
+    touch.setDebounce(BUTTON_SET_DEBOUNCE_SENSORY);
+  } else {
+    touch.setType(HIGH_PULL);
+    touch.setDebounce(BUTTON_SET_DEBOUNCE_MECHANICAL);
+  }
+  touch.setDirection(NORM_OPEN);
+  touch.setTimeout(BUTTON_CLICK_TIMEOUT);
+  touch.setStepTimeout(BUTTON_STEP_TIMEOUT);
+#endif
 
   // часы
 #if USE_TM1637
@@ -723,6 +745,29 @@ void setup()  //================================================================
   ADVERT_TIMER_M = 100 * jsonReadtoInt(configHardware, "tim_m");
   mp3_delay = 10 * jsonReadtoInt(configHardware, "delay");
   #endif
+  #if USE_BUTTON
+  {
+    String s;
+    s = jsonRead(configHardware, "btn_click_power");
+    btn_click_power = s.length() ? s.toInt() : 1U;
+    s = jsonRead(configHardware, "btn_click_next");
+    btn_click_next = s.length() ? s.toInt() : 2U;
+    s = jsonRead(configHardware, "btn_click_prev");
+    btn_click_prev = s.length() ? s.toInt() : 3U;
+    s = jsonRead(configHardware, "btn_click_action4");
+    btn_click_action4 = s.length() ? s.toInt() : 4U;
+    s = jsonRead(configHardware, "btn_click_ip");
+    btn_click_ip = s.length() ? s.toInt() : 5U;
+    s = jsonRead(configHardware, "btn_click_time");
+    btn_click_time = s.length() ? s.toInt() : 6U;
+    s = jsonRead(configHardware, "btn_click_esp_mode");
+    btn_click_esp_mode = s.length() ? s.toInt() : 7U;
+    s = jsonRead(configHardware, "btn_click_sound");
+    btn_click_sound = s.length() ? s.toInt() : 8U;
+    s = jsonRead(configHardware, "btn_click_weather");
+    btn_click_weather = s.length() ? s.toInt() : 9U;
+  }
+#endif
   }
   {
   String configIP = readFile(F("config_ip.json"), 512);
