@@ -813,11 +813,11 @@ void setup()  //================================================================
 
   if(DONT_TURN_ON_AFTER_SHUTDOWN){
       ONflag = false;
-  jsonWrite(configSetup, "Power", ONflag);
   }
   else
+  {
       ONflag = jsonReadtoInt (configSetup, "Power");  // Чтение состояния лампы вкл/выкл,текущий эффект,яркость,скорость,масштаб
-
+  }
   currentMode = jsonReadtoInt (configSetup, "eff_sel");
   modes[currentMode].Brightness = jsonReadtoInt (configSetup, "br");
   modes[currentMode].Speed = jsonReadtoInt (configSetup, "sp");

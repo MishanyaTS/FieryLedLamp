@@ -30,6 +30,7 @@ static CRGB sunsetColor[6];
 
 static uint8_t dawnCounter = 0;                                           // счётчик первых 10 шагов будильника
 static uint8_t sunsetCounter = 0;                                           // счётчик первых 10 шагов заката
+static int8_t lastScheduleDay = -1;
 
 void timeTick()
 {
@@ -102,10 +103,29 @@ if (stillUseNTP)
 
       time_t currentLocalTime = getCurrentLocalTime();
       uint8_t thisDay = dayOfWeek(currentLocalTime);
-      if (thisDay == 1) thisDay = 8;                                      // в библиотеке Time воскресенье - это 1; приводим к диапазону [0..6], где воскресенье - это 6
+      if (thisDay == 1) {
+      thisDay = 6;
+      } else {
       thisDay -= 2;
+      }
       thisTime = hour(currentLocalTime) * 60 + minute(currentLocalTime);
       uint32_t thisFullTime = hour(currentLocalTime) * 3600 + minute(currentLocalTime) * 60 + second(currentLocalTime);
+      if (lastScheduleDay != (int8_t)thisDay)
+      {
+        lastScheduleDay = thisDay;
+        manualOff = false;
+        dawnFlag = 0;
+        dawnCounter = 0;
+        for (uint8_t j = 0U; j < 6U; j++) {
+        dawnColor[j] = 0;
+        }
+        manualsOff = false;
+        sunsetFlag = 0;
+        sunsetCounter = 0;
+        for (uint8_t j = 0U; j < 6U; j++) {
+        sunsetColor[j] = 0;
+        }
+      }
       printTime(thisTime, false, ONflag);   // проверка текущего времени и его вывод (если заказан и если текущее время соответстует заказанному расписанию вывода)
       printWeather(thisTime, false, ONflag); // периодический вывод погоды бегущей строкой
       if (last_minute != minute(currentLocalTime)
