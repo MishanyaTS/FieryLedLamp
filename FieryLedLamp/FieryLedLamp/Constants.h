@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION      " v7.1.1"
+#define VERSION      " v7.2"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -66,9 +66,19 @@
 
 // =============  МАТРИЦА  =======================================================================
 #define CURRENT_LIMIT         (4000U)                       // Лимит потребления матрицы по току в миллиамперах, автоматически управляет яркостью (пожалей свой блок питания!) 0 – выключить лимит
-#define WIDTH                 (16)                          // ширина матрицы
-#define HEIGHT                (16)                          // высота матрицы
-#define COLOR_ORDER           (GRB)                         // порядок цветов на ленте. Если цвет отображается некорректно - меняйте. Начать можно с RGB
+#define WIDTH_DEFAULT         (16U)                         // Ширина матрицы по умолчанию
+#define HEIGHT_DEFAULT        (16U)                         // Высота матрицы по умолчанию
+#define WIDTH_MIN             (8U)                          // Минимальная ширина
+#define HEIGHT_MIN            (8U)                          // Минимальная высота
+#define WIDTH_MAX             (48U)                         // Максимальная ширина
+#define HEIGHT_MAX            (48U)                         // Максимальная высота
+#define NUM_LEDS_MAX          (uint16_t)(WIDTH_MAX * HEIGHT_MAX)
+#define MAX_NOISE_DIMENSION   ((WIDTH_MAX > HEIGHT_MAX) ? WIDTH_MAX : HEIGHT_MAX)
+extern uint8_t matrixWidth;
+extern uint8_t matrixHeight;
+#define WIDTH                 (matrixWidth)
+#define HEIGHT                (matrixHeight)
+extern uint8_t colorOrder;                                  // Значения: 0=RGB, 1=RBG, 2=GRB, 3=GBR, 4=BRG, 5=BGR
 
 // =============  РАЗНОЕ  ========================================================================
 #define ESP_CONF_TIMEOUT        (60U)                       // Время в секундах, которое лампа будет ждать от вас ввода пароля для ОТА обновления (пароль совпадает с паролем точки доступа)
@@ -281,7 +291,7 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
   {  30, 170,  25}, // Дымовые шашки
   {  20, 110,   1}, // Жидкая лампа
   {  20, 124,  39}, // Жидкая лампа авто
-  {  30, 195,  70}, // Завиток
+  {  30, 195,  30}, // Завиток
   {  25, 215,  99}, // Звезды
   {  25,  18,  26}, // Звезды Новые
   {  15,   8,  21}, // Зебра
@@ -404,6 +414,11 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
 #define FASTLED_ESP32_RAW_PIN_ORDER
 
 #define NUM_LEDS              (uint16_t)(WIDTH * HEIGHT)
+#define CENTER_X_MINOR        ((uint8_t)((WIDTH / 2U) - ((WIDTH - 1U) & 0x01U)))
+#define CENTER_Y_MINOR        ((uint8_t)((HEIGHT / 2U) - ((HEIGHT - 1U) & 0x01U)))
+#define CENTER_X_MAJOR        ((uint8_t)(WIDTH / 2U + (WIDTH % 2U)))
+#define CENTER_Y_MAJOR        ((uint8_t)(HEIGHT / 2U + (HEIGHT % 2U)))
+#define MAX_DIMENSION_RUNTIME ((uint8_t)max(WIDTH, HEIGHT))
 #define SEGMENTS              (1U)                          // диодов в одном "пикселе" (для создания матрицы из кусков ленты). вряд ли эффекты будут корректно работать, если изменить этот параметр
 
 #define DYNAMIC                (0U)   // динамическая задержка для кадров ( будет использоваться бегунок Скорость )
@@ -501,6 +516,7 @@ const uint8_t AP_STATIC_IP[] = {192, 168, 4, 1};            // статичес�
 
 uint8_t ORIENTATION;                                        // Ориентация матрицы
 uint8_t MATRIX_TYPE = 0;                                    // тип матрицы: 0 - зигзаг, 1 - параллельная
+uint8_t colorOrder = 2;                                     // По умолчанию GRB
 
 uint8_t DONT_TURN_ON_AFTER_SHUTDOWN;                        // Не включать после обесточивания
 uint32_t AUTOMATIC_OFF_TIME = (0UL);                        // Автовыключение

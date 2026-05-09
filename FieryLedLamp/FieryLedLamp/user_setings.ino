@@ -95,6 +95,8 @@ void User_setings ()  {
  HTTP.on("/cur_lim", handle_current_limit);  // выбор лимита тока матрицы
  HTTP.on("/m_t", handle_matrix_tipe);        // выбор типа матрицы
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
+ HTTP.on("/color_order", handle_color_order);
+ HTTP.on("/matrix_size", handle_matrix_size); // Размер матрицы
  HTTP.on("/ssdp", handle_ssdp);  // Имя лампы
  HTTP.on("/res_to_def", handle_reset_to_default);  // Сброс всех настроек к "заводским"
  HTTP.on("/toe", handle_runing_text_over_effects );  // Выводить бегущую строку поверх эффектов
@@ -244,7 +246,7 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
 #endif //USE_IR_RECEIVER
 
     HTTP.on("/?setup_IR", HTTP_GET, []() {
-      #ifndef USE_IR_RECEIVER
+      #if !USE_IR_RECEIVER
     HTTP.send(404, "text/plain", "Настройки пульта отключены в прошивке");
       #else
     handleFileRead("/setup_IR.htm");
@@ -1059,7 +1061,7 @@ void handle_Power ()  {
             Save_File_Changes();
         } else {
           // Включение лампы: загружаем настройки из EEPROM
-            EepromManager::EepromGet(modes);
+            //EepromManager::EepromGet(modes);
             timeout_save_file_changes = millis();
             bitSet(save_file_changes, 0);
     changePower();
@@ -1749,7 +1751,7 @@ void get_time_manual ()   {
     #endif // WARNING_IF_NO_TIME  
     timeSynched = true;
     getBrightnessForPrintTime();
-    #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && defined(USE_NTP) && !defined(USE_RTC)
+    #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && defined(USE_NTP) && !USE_RTC
       stillUseNTP = false;
     #endif
     jsonWrite(configSetup, "time", (Get_Time(manualTimeShift+millis()/1000UL)));
@@ -2178,6 +2180,28 @@ void handle_matrix_orientation ()   {
     jsonWrite(configHardware, "m_o", ORIENTATION);
     writeFile(F("config_hardware.json"), configHardware );
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_color_order() {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    colorOrder = HTTP.arg("color_order").toInt();
+    jsonWrite(configHardware, "color_order", colorOrder);
+    writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_matrix_size ()   {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    uint8_t newWidth = constrain(HTTP.arg("m_w").toInt(), WIDTH_MIN, WIDTH_MAX);
+    uint8_t newHeight = constrain(HTTP.arg("m_h").toInt(), HEIGHT_MIN, HEIGHT_MAX);
+    matrixWidth = newWidth;
+    matrixHeight = newHeight;
+    jsonWrite(configHardware, "m_w", matrixWidth);
+    jsonWrite(configHardware, "m_h", matrixHeight);
+    writeFile(F("config_hardware.json"), configHardware );
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\", \"message\": \"Размер матрицы сохранен. Перезагрузка...\"}"));
+    delay(100);
+    ESP.restart();
 }
 
 void handle_reset_to_default ()   {

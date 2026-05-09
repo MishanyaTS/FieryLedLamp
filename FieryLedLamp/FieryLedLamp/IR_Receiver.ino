@@ -295,7 +295,7 @@ void IR_Power()   {
             Save_File_Changes();
         }
         else {
-            EepromManager::EepromGet(modes);
+            //EepromManager::EepromGet(modes);
             timeout_save_file_changes = millis();
             bitSet(save_file_changes, 0);
         }       
@@ -435,7 +435,7 @@ void Cycle_on_off()   {
         }
         else {
             showWarning(CRGB::Red, 500, 250U);        // мигание красным цветом 0.5 секунды
-            EepromManager::EepromGet(modes);
+            //EepromManager::EepromGet(modes);
         }
         #if USE_MQTT
         if (espMode == 1U)

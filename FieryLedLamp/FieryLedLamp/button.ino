@@ -255,7 +255,7 @@ void buttonTick()
       if (!dawnFlag) {
         // мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
         showWarning(CRGB::Blue, 1000, 250U);                    // мигание синим цветом 1 секунду
-        if (!ONflag) EepromManager::EepromGet(modes);
+        //if (!ONflag) EepromManager::EepromGet(modes);
         ONflag = true;
         changePower();
         jsonWrite(configSetup, "Power", ONflag);
@@ -660,7 +660,7 @@ if (touch.isStep()){
           Button_Holding = true;
           // мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
           showWarning(CRGB::Blue, 1500U, 250U);                    // мигание синим цветом 1 секунду
-          EepromManager::EepromGet(modes);
+          //EepromManager::EepromGet(modes);
           ONflag = true;
           changePower();
           jsonWrite(configSetup, "Power", ONflag);

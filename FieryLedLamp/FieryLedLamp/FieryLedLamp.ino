@@ -110,7 +110,9 @@ bool blynkConfiguredEnabled = false;
 RtcDateTime timeToSet;
 #endif
 
-CRGB leds[NUM_LEDS];
+uint8_t matrixWidth = WIDTH_DEFAULT;
+uint8_t matrixHeight = HEIGHT_DEFAULT;
+CRGB leds[NUM_LEDS_MAX];
 WiFiUDP Udp;
 bool apFallbackActive = false;
 uint32_t apFallbackStartMs = 0;
@@ -176,7 +178,6 @@ File fsUploadFile;                       // Для файловой систем
 uint16_t localPort = ESP_UDP_PORT;
 char packetBuffer[MAX_UDP_BUFFER_SIZE];  // buffer to hold incoming packet
 char inputBuffer[MAX_UDP_BUFFER_SIZE];
-static const uint8_t maxDim = max(WIDTH, HEIGHT);
 
 String yandexWeatherKey = "";
 bool useOpenWeather = false;
@@ -237,7 +238,7 @@ bool ONflag = false;
   bool buttonBlocing = false;
  #endif
 #endif
-unsigned char matrixValue[8][16]; //это массив для эффекта Огонь
+unsigned char matrixValue[HEIGHT_MAX][WIDTH_MAX]; //это массив для эффекта Огонь
 
 bool TimerManager::TimerRunning = false;
 bool TimerManager::TimerHasFired = false;
@@ -280,8 +281,9 @@ bool connect = false;
 uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
 uint8_t PRINT_TIME ;
 uint16_t PRINT_WEATHER ;
+
+uint8_t tft_on = USE_TFT ? 1 : 0;     // Использовать дисплей TFT: 0 - выкл, 1 - вкл
 #if USE_TFT
-uint8_t tft_on = 1;                   // Использовать дисплей TFT: 0 - выкл, 1 - вкл
 uint8_t tft_clock_color = 0;
 uint8_t tft_weather_color = 1;
 bool     tft_ticker_on = false;
@@ -368,6 +370,7 @@ uint8_t  LastCurrentFolder = 255;
 #endif  // USE_MP3_PLAYER
 uint8_t  DisplayFlag  = 0;
 #endif
+uint8_t tm1637_on = USE_TM1637 ? 1 : 0;   // Использовать дисплей TM1637: 0 - выкл, 1 - вкл
 #if USE_TM1637
 uint8_t DispBrightness = 1;          // +++ Яркость дисплея от 0 до 255(5 уровней яркости с шагом 51). 0 - дисплей погашен 
 bool dotFlag = false;                // +++ Флаг: в часах рисуется двоеточие или нет
@@ -375,13 +378,13 @@ uint32_t tmr_clock = 0;              // +++ Таймер мигания разд
 uint32_t tmr_blink = 0;              // +++ Таймер плавного изменения яркости дисплея
 TM1637Display display(CLK, DIO);     // +++ Подключаем дисплей
 bool aDirection = false;             // +++ Направление изменения яркости
-uint8_t tm1637_on = 1;                // Использовать дисплей TM1637: 0 - выкл, 1 - вкл
 #endif  //USE_TM1637
 
 #if HEAP_SIZE_PRINT
 uint32_t mem_timer;
 #endif //HEAP_SIZE_PRINT 
 
+uint8_t ir_on = USE_IR_RECEIVER ? 1 : 0;  // Использовать ИК-приёмник: 0 - выкл, 1 - вкл
 #if USE_IR_RECEIVER
  uint32_t IR_Code = 0x00000000;
  uint32_t IR_Repeat_Timer;
@@ -391,8 +394,7 @@ uint32_t mem_timer;
  uint8_t Enter_Digits_Count = 0;
  unsigned long IR_Digit_Timer = 0;
  unsigned long lastIRtime = 0;  // время последнего приёма ИК-сигнала
- uint8_t ir_on = 1;                    // Использовать ИК-приёмник: 0 - выкл, 1 - вкл
-
+ 
 #define IR_REPEAT_TIMER      500   // Время ожидания повтора
 #define IR_TICK_TIMER        100    // Время между автоповтором
 #define IR_DIGIT_ENTER_TIMER 2000   // Время для ввода второй цифры номера эффекта
@@ -447,8 +449,8 @@ void FS_init(void) {
   });
 }
 
+uint8_t rtc_on = USE_RTC ? 1 : 0;     // Использовать RTC: 0 - выкл, 1 - вкл
 #if USE_RTC
-uint8_t rtc_on = 1;                   // Использовать RTC: 0 - выкл, 1 - вкл
 bool wasError(const char* errorTopic = "")
 {
   #ifdef RTC_3231
@@ -495,7 +497,7 @@ void setup()  //================================================================
 
   LOG.print(F("\n\n\nSYSTEM START ESP32-S3\n"));
 
-#ifndef USE_RTC
+#if !USE_RTC
   hasRtc = false;
 #endif
 
@@ -565,6 +567,10 @@ void setup()  //================================================================
     String mp3OnCfg = jsonRead(configHardware, "mp3_on");
     mp3_player_on = (mp3OnCfg.length() == 0) ? 1 : mp3OnCfg.toInt();
     #endif
+    String matrixWidthCfg = jsonRead(configHardware, "m_w");
+    String matrixHeightCfg = jsonRead(configHardware, "m_h");
+    matrixWidth = matrixWidthCfg.length() ? constrain(matrixWidthCfg.toInt(), WIDTH_MIN, WIDTH_MAX) : WIDTH_DEFAULT;
+    matrixHeight = matrixHeightCfg.length() ? constrain(matrixHeightCfg.toInt(), HEIGHT_MIN, HEIGHT_MAX) : HEIGHT_DEFAULT;
   }
   #if USE_BUTTON
   if (button_type) {
@@ -740,6 +746,7 @@ void setup()  //================================================================
   current_limit = jsonReadtoInt(configHardware, "cur_lim");
   MATRIX_TYPE = jsonReadtoInt(configHardware, "m_t");
   ORIENTATION = jsonReadtoInt(configHardware, "m_o");
+  colorOrder = jsonReadtoInt(configHardware, "color_order");
   #if USE_MP3_PLAYER
   ADVERT_TIMER_H = 100 * jsonReadtoInt(configHardware, "tim_h");
   ADVERT_TIMER_M = 100 * jsonReadtoInt(configHardware, "tim_m");
@@ -768,6 +775,7 @@ void setup()  //================================================================
     btn_click_weather = s.length() ? s.toInt() : 9U;
   }
 #endif
+    offset = WIDTH;
   }
   {
   String configIP = readFile(F("config_ip.json"), 512);
@@ -791,8 +799,14 @@ void setup()  //================================================================
 
 
   // ЛЕНТА/МАТРИЦА
-  FastLED.addLeds<WS2812B, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS)/*.setCorrection(TypicalLEDStrip)*/;
-  //FastLED.addLeds<WS2812B, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(0xB0FFE0); // Калибровка баланса белого цвета. Последовательность байт RGB (B0-R FF-G E0-B)
+  switch(colorOrder) {
+  case 0: FastLED.addLeds<WS2812B, LED_PIN, RGB>(leds, NUM_LEDS); break;
+  case 1: FastLED.addLeds<WS2812B, LED_PIN, RBG>(leds, NUM_LEDS); break;
+  case 2: FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS); break;
+  case 3: FastLED.addLeds<WS2812B, LED_PIN, GBR>(leds, NUM_LEDS); break;
+  case 4: FastLED.addLeds<WS2812B, LED_PIN, BRG>(leds, NUM_LEDS); break;
+  case 5: FastLED.addLeds<WS2812B, LED_PIN, BGR>(leds, NUM_LEDS); break;
+}
   FastLED.setBrightness(BRIGHTNESS);
   if (current_limit > 0)
   {

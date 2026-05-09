@@ -281,43 +281,42 @@ uint16_t getSizeValue(byte* buffer, byte b ) {
 // --------------------------------------
 // функция скрола изображения по оси X 
 void scrollImage(uint16_t imgW, uint16_t imgH, uint16_t start_row) {
-  const byte HEADER = 16;
-  const uint16_t BYTES_PER_PIXEL = 2U;
-  // const uint16_t imgSize = imgW * imgH * BYTES_PER_PIXEL + HEADER;
-  uint8_t r, g, b;
-  uint8_t padding = floor((HEIGHT - imgH) / 2);
-  uint8_t topPos = HEIGHT - padding - 1;
-  uint16_t pixIndex;
-  uint8_t delta = 0;
+    const byte HEADER = 16;
+    const uint16_t BYTES_PER_PIXEL = 2U;
+    uint8_t r, g, b;
+    
+    // Изменено на int8_t, чтобы корректно обрабатывать отрицательные значения, 
+    // когда высота картинки больше высоты матрицы (например, 16x16 на матрице 8x8)
+    int8_t padding = floor((HEIGHT - imgH) / 2.0f);
+    int8_t topPos = HEIGHT - padding - 1;
+    
+    uint16_t pixIndex;
+    uint8_t delta = 0;
 
-  for (uint16_t x = 0; x < WIDTH; x++) {
-    for (uint16_t y = 0; y < (imgH - 1); y++) {
-      if ((start_row + x) > WIDTH) {
-        delta = 1;
-      }
-      pixIndex = HEADER + (start_row + x + y * imgW) * BYTES_PER_PIXEL;
+    for (uint16_t x = 0; x < WIDTH; x++) {
+        for (uint16_t y = 0; y < (imgH - 1); y++) {
+            if ((start_row + x) > WIDTH) { delta = 1; }
+            pixIndex = HEADER + (start_row + x + y * imgW) * BYTES_PER_PIXEL;
+            
+            // Исправлены битовые сдвиги (в оригинале были пробелы: < < 5)
+            r = (binImage[pixIndex + 1]  & 0xF8);
+            g = ((binImage[pixIndex + 1]  & 0x07) << 5) + ((binImage[pixIndex]  & 0xE0) << 5);
+            b = (binImage[pixIndex]  & 0x1F) << 3;
 
-      // convert rgb565 to rgb888 -----------
-      // masc rgb565  0xF800 | 0x07E0 | 0x001F 
-      r = (binImage[pixIndex + 1] & 0xF8);
-      g = ((binImage[pixIndex + 1] & 0x07) << 5) + ((binImage[pixIndex] & 0xE0) << 5);
-      b = (binImage[pixIndex] & 0x1F) << 3;
-      // вариант с изменением яркости ----
-        //hue = abs(16 - start_row) * 4;
-        //leds[XY(x, topPos - y - delta)] = CRGB(constrain(r - hue, 0, 255), constrain(g - hue, 0, 255), constrain(b - hue, 0, 255));
-      // ------------------------------------
-      
-      leds[XY(x, topPos - y - delta)] = CRGB(r, g, b);
-      // drawPixelXY(x, topPos - y - delta, CRGB(r, g, b));
-      // draw background 
-      if ((start_row == 0) && (y == 0) && (padding > 0)) {
-        drawRec(0, HEIGHT - padding, WIDTH, HEIGHT, getPixColorXY(0, topPos));
-        drawRec(0, 0, WIDTH, padding, getPixColorXY(0, topPos));
-      }
-    } // end for y
-  }
+            // Расчёт координаты Y с проверкой границ
+            int8_t yPos = topPos - y - delta;
+            if (yPos >= 0 && yPos < HEIGHT) {
+                leds[XY(x, yPos)] = CRGB(r, g, b);
+            }
+
+            // Отрисовка фона только если он не выходит за пределы матрицы
+            if ((start_row == 0) && (y == 0) && (padding > 0)) {
+                if (HEIGHT - padding < HEIGHT) drawRec(0, HEIGHT - padding, WIDTH, HEIGHT, getPixColorXY(0, topPos));
+                if (padding > 0) drawRec(0, 0, WIDTH, padding, getPixColorXY(0, topPos));
+            }
+        }
+    }
 }
-
 
 // ======================================
 // New Effects
@@ -1317,29 +1316,26 @@ void Watercolor() {
 }
 
 // =========== FeatherCandle ============
-//         адаптация © SottNick
-//    github.com/mnemocron/FeatherCandle
-//      modify & design © SlingMaster
+//      modify & design © MishanyaTS
 //           EFF_FEATHER_CANDLE
 //                Свеча
-//---------------------------------------
+// ---------------------------------------
 #include "data7x15flip.h"                       // FeatherCandle animation data
+
 const uint8_t  level = 160;
 const uint8_t  low_level = 110;
 const uint8_t *ptr  = anim;                     // Current pointer into animation data
 const uint8_t  w    = 7;                        // image width
 const uint8_t  h    = 15;                       // image height
 uint8_t        img[w * h];                      // Buffer for rendering image
-uint8_t        deltaX = CENTER_X_MAJOR - 3;     // position img
 uint8_t last_brightness;
 void FeatherCandleRoutine() {
-#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+  #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
   if (selectedSettings) {
-    // brightness | scale | speed
-    // { 21, 220,  40}
     setModeSettings(1U + random8(99U), 190U + random8(65U));
   }
-#endif
+  #endif
+
   if (loadingFlag) {
     FastLED.clear();
     hue = 0;
@@ -1350,107 +1346,100 @@ void FeatherCandleRoutine() {
     loadingFlag = false;
   }
 
-  uint8_t a = pgm_read_byte(ptr++);     // New frame X1/Y1
-  if (a >= 0x90) {                      // EOD marker? (valid X1 never exceeds 8)
-    ptr = anim;                         // Reset animation data pointer to start
-    a   = pgm_read_byte(ptr++);         // and take first value
-  }
-  uint8_t x1 = a >> 4;                  // X1 = high 4 bits
-  uint8_t y1 = a & 0x0F;                // Y1 = low 4 bits
-  a  = pgm_read_byte(ptr++);            // New frame X2/Y2
-  uint8_t x2 = a >> 4;                  // X2 = high 4 bits
-  uint8_t y2 = a & 0x0F;                // Y2 = low 4 bits
+  // --- Декодирование кадра анимации ---
+  uint8_t a = pgm_read_byte(ptr++);
+  if (a >= 0x90) { ptr = anim; a = pgm_read_byte(ptr++); }
+  uint8_t x1 = a >> 4; uint8_t y1 = a & 0x0F;
+  a  = pgm_read_byte(ptr++);
+  uint8_t x2 = a >> 4; uint8_t y2 = a & 0x0F;
 
-  // Read rectangle of data from anim[] into portion of img[] buffer
   for (uint8_t y = y1; y <= y2; y++)
-    for (uint8_t x = x1; x <= x2; x++) {
+    for (uint8_t x = x1; x <= x2; x++)
       img[y * w + x] = pgm_read_byte(ptr++);
-    }
-  int i = 0;
+
+  // --- Динамическое масштабирование пламени ---
+  float scale = min((float)WIDTH / w, (float)HEIGHT / h);
+  if (scale > 4.0f) scale = 4.0f;
+  if (scale < 0.4f) scale = 0.4f;
+
+  uint8_t drawW = (uint8_t)(w * scale + 0.5f);
+  uint8_t drawH = (uint8_t)(h * scale + 0.5f);
+
+  int8_t offsetX = (WIDTH - drawW) / 2;
+  int8_t offsetY = (HEIGHT - drawH) / 2;
+  if (offsetX < 0) offsetX = 0;
+  if (offsetY < 0) offsetY = 0;
+
   uint8_t color = (modes[currentMode].Scale - 1U) * 2.57;
 
-
-
-  // draw flame -------------------
-  for (uint8_t y = 1; y < h; y++) {
-    if ((HEIGHT < 15) || (WIDTH < 9)) {
-      // for small matrix -----
-      if (y % 2 == 0) {
-        leds[XY(CENTER_X_MAJOR - 1, 7)] = CHSV(color, 255U, 55 + random8(200));
-        leds[XY(CENTER_X_MAJOR, 6)] = CHSV(color, 255U, 160 + random8(90));
-        leds[XY(CENTER_X_MAJOR + 1, 6)] = CHSV(color, 255U, 205 + random8(50));
-        leds[XY(CENTER_X_MAJOR - 1, 5)] = CHSV(color, 255U, 155 + random8(100));
-        leds[XY(CENTER_X_MAJOR, 5)] = CHSV(color - 10U , 255U, 120 + random8(130));
-        leds[XY(CENTER_X_MAJOR, 4)] = CHSV(color - 10U , 255U, 100 + random8(120));
-        DrawLine(0, 2U, WIDTH - 1, 2U, 0x000000);
-      }
-    } else {
-      for (uint8_t x = 0; x < w; x++) {
-        uint8_t brightness = img[i];
-        leds[XY(deltaX + x, y)] = CHSV(brightness > 240 ? color : color - 10U , 255U, brightness);
-        i++;
-      }
-    }
-
-    // draw body FeatherCandle ------
-    if (y <= 3) {
-      if (y % 2 == 0) {
-        gradientVertical(0, 0, WIDTH, 2, color, color, 48, 128, 20U);
-      }
-    }
-
-    // drops of wax move -------------
-    switch (hue ) {
-      case 0:
-        if (trackingObjectState[0] < level) {
-          trackingObjectState[0]++;
+  // Отрисовка пламени (масштабированное)
+  for (uint8_t dy = 0; dy < drawH; dy++) {
+    uint8_t sy = (dy * h) / drawH;
+    for (uint8_t dx = 0; dx < drawW; dx++) {
+      uint8_t sx = (dx * w) / drawW;
+      uint8_t brightness = img[sy * w + sx];
+      
+      if (brightness > 0) {
+        uint8_t px = offsetX + dx;
+        uint8_t py = offsetY + dy;
+        if (px < WIDTH && py < HEIGHT) {
+          leds[XY(px, py)] = CHSV(brightness > 240 ? color : color - 10U, 255U, brightness);
         }
-        break;
-      case 1:
-        if (trackingObjectState[0] > low_level) {
-          trackingObjectState[0] --;
-        }
-        if (trackingObjectState[1] < level) {
-          trackingObjectState[1] ++;
-        }
-        break;
-      case 2:
-        if (trackingObjectState[1] > low_level) {
-          trackingObjectState[1] --;
-        }
-        if (trackingObjectState[2] < level) {
-          trackingObjectState[2] ++;
-        }
-        break;
-      case 3:
-        if (trackingObjectState[2] > low_level) {
-          trackingObjectState[2] --;
-        } else {
-          hue++;
-          // set random position drop of wax
-          trackingObjectState[4] = CENTER_X_MAJOR - 3 + random8(6);
-        }
-        break;
-    }
-
-    if (hue > 3) {
-      hue++;
-    } else {
-      // LOG.printf_P(PSTR("[0] = %03d | [1] = %03d | [2] = %03d \n\r"), trackingObjectState[0], trackingObjectState[1], trackingObjectState[2]);
-      if (hue < 2) {
-        leds[XY(trackingObjectState[4], 2)] = CHSV(50U, 20U, trackingObjectState[0]);
-      }
-      if ((hue == 1) || (hue == 2)) {
-        leds[XY(trackingObjectState[4], 1)] = CHSV(50U, 15U, trackingObjectState[1]); // - 10;
-      }
-      if (hue > 1) {
-        leds[XY(trackingObjectState[4], 0)] = CHSV(50U, 5U, trackingObjectState[2]); // - 20;
       }
     }
   }
 
-  // next -----------------
-  if ((trackingObjectState[0] == level) || (trackingObjectState[1] == level) || (trackingObjectState[2] == level)) {
+  // --- Отрисовка тела свечи ---
+  uint8_t bodyH = (drawH >= 5) ? (drawH / 5) : 1;
+  if (bodyH > 0 && (offsetY + bodyH) < HEIGHT) {
+    gradientVertical(0, offsetY, WIDTH, offsetY + bodyH, color, color, 48, 128, 20U);
+  }
+
+  switch (hue) {
+    case 0:
+      if (trackingObjectState[0] + 3 < level) trackingObjectState[0] += 3;
+      else trackingObjectState[0] = level;
+      break;
+    case 1:
+      if (trackingObjectState[0] > low_level + 3) trackingObjectState[0] -= 3;
+      else trackingObjectState[0] = low_level;
+      
+      if (trackingObjectState[1] + 3 < level) trackingObjectState[1] += 3;
+      else trackingObjectState[1] = level;
+      break;
+    case 2:
+      if (trackingObjectState[1] > low_level + 3) trackingObjectState[1] -= 3;
+      else trackingObjectState[1] = low_level;
+      
+      if (trackingObjectState[2] + 3 < level) trackingObjectState[2] += 3;
+      else trackingObjectState[2] = level;
+      break;
+    case 3:
+      if (trackingObjectState[2] > low_level + 3) trackingObjectState[2] -= 3;
+      else trackingObjectState[2] = low_level;
+      
+      if (trackingObjectState[2] == low_level) {
+        hue++;
+        trackingObjectState[4] = CENTER_X_MAJOR - 3 + random8(6);
+      }
+      break;
+  }
+
+  if (hue > 3) {
+    hue++;
+  } else {
+    if (trackingObjectState[4] < WIDTH) {
+      if (hue < 2)
+        leds[XY(trackingObjectState[4], 2)] = CHSV(50U, 20U, trackingObjectState[0]);
+      if (hue == 1 || hue == 2)
+        leds[XY(trackingObjectState[4], 1)] = CHSV(50U, 15U, trackingObjectState[1]);
+      if (hue > 1)
+        leds[XY(trackingObjectState[4], 0)] = CHSV(50U, 5U, trackingObjectState[2]);
+    }
+  }
+
+  // Переключение фазы при достижении порога яркости
+  if (trackingObjectState[0] >= level || trackingObjectState[1] >= level || trackingObjectState[2] >= level) {
     hue++;
   }
 }
@@ -2927,50 +2916,46 @@ void EffectStars() {
 //             © SlingMaster
 // =====================================
 void PlanetEarth() {
-  static uint16_t imgW = 0;
-  static uint16_t imgH = 0;
-  if (HEIGHT < 16U) {
-    return;
-  }
-  if (loadingFlag) {
-#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
-    if (selectedSettings) {
-      // scale | speed
-      setModeSettings(128U, 10U + random8(230U));
+    static uint16_t imgW = 0;
+    static uint16_t imgH = 0;
+
+    if (loadingFlag) {
+        #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+        if (selectedSettings) {
+            setModeSettings(128U, 10U + random8(230U));
+        }
+        #endif
+        loadingFlag = false;
+        FPSdelay = 96U;
+        FastLED.clear();
+        // Адаптивный выбор файла изображения в зависимости от высоты матрицы
+        String file_name;
+        if (HEIGHT <= 10)       file_name = "globe0";      // Минимальное разрешение
+        else if (HEIGHT < 24)   file_name = "globe1";      // Стандартное (обычно 16x16)
+        else                    file_name = "globe_big";   // Для больших матриц
+
+        readBinFile("bin/" + file_name + ".img", 4112);
+        imgW = getSizeValue(binImage, 8);
+        imgH = getSizeValue(binImage, 10);
+
+        #if GENERAL_DEBUG
+        LOG.printf_P(PSTR("Image • %03d x %02d px\n"), imgW, imgH);
+        #endif
+
+        scrollImage(imgW, imgH, 0U);
+        ff_x = 1U;
     }
-#endif
-    loadingFlag = false;
-    FPSdelay = 96U;
-    FastLED.clear();
-    String file_name = (modes[currentMode].Scale < 50) ? "globe0" : (HEIGHT >= 24U) ? "globe_big" : "globe1";
-    readBinFile("bin/" + file_name + ".img", 4112 );
+    /* scrool index reverse --> */
+    if (ff_x < 1) ff_x = (imgW - imgH);
+    scrollImage(imgW, imgH, ff_x - 1);
+    ff_x--;
 
-    imgW = getSizeValue(binImage, 8 );
-    imgH = getSizeValue(binImage, 10 );
-
-#if GENERAL_DEBUG
-    LOG.printf_P(PSTR("Image • %03d x %02d px\n"), imgW, imgH);
-#endif
-    scrollImage(imgW, imgH, 0U);
-    ff_x = 1U;
-  }
-
-  /* scrool index reverse --> */
-  if (ff_x < 1) ff_x = (imgW - imgH);
-  scrollImage(imgW, imgH, ff_x - 1);
-  ff_x--;
-  //  if (ff_x < 1) ff_x = (imgW - 1);
-  if (ff_x == 0) {
-    scrollImage(imgW, imgH, 0U);
-    ff_x = imgW;
-  } else {
-    scrollImage(imgW, imgH, ff_x);
-  }
-
-  /* <-- scrool index ------- */
-  //  if (ff_x > (imgW - imgH)) ff_x = 1U;
-  //  scrollImage(imgW, imgH, ff_x - 1);
-  //  ff_x++;
+    if (ff_x == 0) {
+        scrollImage(imgW, imgH, 0U);
+        ff_x = imgW;
+    } else {
+        scrollImage(imgW, imgH, ff_x);
+    }
 }
 
 // =============== Bamboo ===============
@@ -3106,8 +3091,8 @@ class Circle {
 
 // -----------------------------------
 namespace Circles {
-#define NUMBER_OF_CIRCLES WIDTH/2
-Circle circles[NUMBER_OF_CIRCLES] = {};
+#define NUMBER_OF_CIRCLES_MAX (((WIDTH_MAX / 2U) > 0U) ? (WIDTH_MAX / 2U) : 1U)
+Circle circles[NUMBER_OF_CIRCLES_MAX] = {};
 
 void drawCircle(Circle circle) {
   int16_t centerX = circle.centerX;
@@ -3149,8 +3134,8 @@ void drawCircle(Circle circle) {
 // -----------------------------
 void draw(bool setup) {
   fadeToBlackBy(leds, NUM_LEDS, 100U);
-  // fillAll(CRGB::Black);
-  for (int i = 0; i < NUMBER_OF_CIRCLES; i++) {
+  const uint8_t circlesCount = ((WIDTH / 2U) > 0U) ? (WIDTH / 2U) : 1U;
+  for (int i = 0; i < circlesCount; i++) {
     if (setup) {
       circles[i].reset();
     } else {

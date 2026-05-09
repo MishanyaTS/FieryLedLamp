@@ -21,5 +21,8 @@
 "btn_click_time":6,
 "btn_click_esp_mode":7,
 "btn_click_sound":8,
-"btn_click_weather":9
+"btn_click_weather": 9,
+"m_w": 16,
+"m_h": 16,
+"color_order": 2
 }

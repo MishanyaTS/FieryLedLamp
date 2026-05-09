@@ -60,7 +60,7 @@ if (timeTimer.isReady())
         }
         if (!ntpServerAddressResolved)
         {
-         #ifndef USE_RTC
+         #if !USE_RTC
             return;                                                         // если нет интернет подключения, отключаем будильник до тех пор, пока оно не будет восстановлено
           #endif
         }
@@ -85,7 +85,7 @@ if (stillUseNTP)
            LOG.println(F("Время синхронизировано с NTP"));
            }
          #endif
-         #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && !defined(USE_RTC)
+         #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && !USE_RTC
            stillUseNTP = false;
          #endif
          getBrightnessForPrintTime();

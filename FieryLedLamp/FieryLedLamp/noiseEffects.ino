@@ -24,11 +24,7 @@ static uint16_t z;
 
 // This is the array that we keep our computed noise values in
 #define MAX_DIMENSION (max(WIDTH, HEIGHT))
-#if (WIDTH > HEIGHT)
-uint8_t noise[WIDTH][WIDTH];
-#else
-uint8_t noise[HEIGHT][HEIGHT];
-#endif
+uint8_t noise[MAX_NOISE_DIMENSION][MAX_NOISE_DIMENSION];
 
 //CRGBPalette16 currentPalette(PartyColors_p);
 uint8_t colorLoop = 1;

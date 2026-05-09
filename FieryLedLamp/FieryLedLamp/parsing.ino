@@ -73,7 +73,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             noTimeClear();
           #endif // WARNING_IF_NO_TIME  
           timeSynched = true;
-          #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && defined(USE_NTP) && !defined(USE_RTC)
+          #if defined(PHONE_N_MANUAL_TIME_PRIORITY) && defined(USE_NTP) && !USE_RTC
             stillUseNTP = false;
           #endif
           getBrightnessForPrintTime();
@@ -263,7 +263,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Brightness = constrain(atoi(buff), 1, 255);
-	  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+      jsonWrite(configSetup, "br", modes[currentMode].Brightness);
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -289,7 +289,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Speed = atoi(buff);
-	  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+      if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
       #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
@@ -304,7 +304,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       modes[currentMode].Scale = atoi(buff);
-	  jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+      if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -339,7 +339,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
       else {
         ONflag = true;
-		jsonWrite(configSetup, "Power", ONflag);
+        jsonWrite(configSetup, "Power", ONflag);
         EepromManager::EepromGet(modes);
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 0);
