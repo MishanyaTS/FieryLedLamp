@@ -1,0 +1,11 @@
+{
+"clock_time":10,
+"weather_time":10,
+"tft_clock_color":"0",
+"tft_weather_color":"1",
+"tft_ticker_on":0,
+"tft_ticker_color":"0",
+"tft_ticker_speed":60,
+"tft_ticker_period":60,
+"tft_ticker_text":"Привет!"
+}

@@ -149,11 +149,33 @@ if (stillUseNTP)
         play_time_ADVERT();
         while (advert_flag) {
            play_time_ADVERT();
+           HTTP.handleClient();
+           #if USE_BUTTON
+             buttonTick();
+           #endif
            esp_task_wdt_reset();
+           delay(1);
         }
         first_entry = 0;
+        advert_hour = false;
       }
     #endif  // USE_MP3_PLAYER
+
+    #if USE_MP3_PLAYER && USE_WEATHER
+      if (alarm_weather_advert_sound_on && mp3_player_connect == 4 && dawnFlag == 1 && dawnPosition >= 245 && currentTemp > -999.0f) {
+        int8_t t = (int8_t)constrain((int)round(currentTemp), -45, 45);
+        start_weather_temp_ADVERT(t, alarm_weather_desc_advert_sound_on);
+        while (weather_advert_flag) {
+           play_weather_temp_ADVERT();
+           HTTP.handleClient();
+           #if USE_BUTTON
+             buttonTick();
+           #endif
+           esp_task_wdt_reset();
+           delay(1);
+        }
+      }
+    #endif  // USE_MP3_PLAYER && USE_WEATHER
       }
 
       // проверка рассвета
@@ -198,8 +220,8 @@ if (stillUseNTP)
         }
         #endif
 
-        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время работы будильника
-        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // рассвет: включаем MOSFET только если рассвет не выключен вручную
+        updateMosfetState();
         #endif
       }
       else
@@ -224,8 +246,8 @@ if (stillUseNTP)
         digitalWrite(ALARM_PIN, !ALARM_LEVEL);
         #endif
 
-        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы
-        digitalWrite(MOSFET_PIN, ONflag ? MOSFET_LEVEL : !MOSFET_LEVEL);
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // возвращаем MOSFET в состояние лампы/рассвета/заката
+        updateMosfetState();
         #endif
       }
         
@@ -271,8 +293,8 @@ if (stillUseNTP)
         //else blink_clock = false;
 #endif
 
-        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время работы будильника
-        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // закат: включаем MOSFET только если закат не выключен вручную
+        updateMosfetState();
         #endif
       }
       else
@@ -296,8 +318,8 @@ if (stillUseNTP)
         //blink_clock = false;
 #endif
 
-        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время работы будильника
-        digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
+        #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)                  // не время заката: возвращаем MOSFET в состояние лампы/рассвета/заката
+        updateMosfetState();
         #endif
       }
     jsonWrite(configSetup, "time", Get_Time(currentLocalTime));

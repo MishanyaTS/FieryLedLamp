@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION      " v7.2"
+#define VERSION      " v7.3"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -70,8 +70,8 @@
 #define HEIGHT_DEFAULT        (16U)                         // Высота матрицы по умолчанию
 #define WIDTH_MIN             (8U)                          // Минимальная ширина
 #define HEIGHT_MIN            (8U)                          // Минимальная высота
-#define WIDTH_MAX             (48U)                         // Максимальная ширина
-#define HEIGHT_MAX            (48U)                         // Максимальная высота
+#define WIDTH_MAX             (64U)                         // Максимальная ширина
+#define HEIGHT_MAX            (64U)                         // Максимальная высота
 #define NUM_LEDS_MAX          (uint16_t)(WIDTH_MAX * HEIGHT_MAX)
 #define MAX_NOISE_DIMENSION   ((WIDTH_MAX > HEIGHT_MAX) ? WIDTH_MAX : HEIGHT_MAX)
 extern uint8_t matrixWidth;
@@ -79,6 +79,7 @@ extern uint8_t matrixHeight;
 #define WIDTH                 (matrixWidth)
 #define HEIGHT                (matrixHeight)
 extern uint8_t colorOrder;                                  // Значения: 0=RGB, 1=RBG, 2=GRB, 3=GBR, 4=BRG, 5=BGR
+extern uint8_t ledDataLines;                                // 1 или 2 DATA-линии для матриц больше 1024 LED
 
 // =============  РАЗНОЕ  ========================================================================
 #define ESP_CONF_TIMEOUT        (60U)                       // Время в секундах, которое лампа будет ждать от вас ввода пароля для ОТА обновления (пароль совпадает с паролем точки доступа)
@@ -98,6 +99,8 @@ extern uint8_t colorOrder;                                  // Значения:
 // =============  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ  ===================================================
 // --- ESP_PIN_OUT ESP32-S3 ---
 #define LED_PIN               (14U)                         // Пин ленты
+#define LED_PIN_2             (2U)                          // Второй пин ленты для матриц больше 32x32
+#define LED_2LINES_AFTER_LEDS (1024U)                       // 1 линия до 32x32 включительно (1024 светодиода), 2 линии если светодиодов больше
 #define BTN_PIN               (7U)                          // Пин кнопки
 #define I2C_SDA               (8U)                          // DS3231 SDA pin
 #define I2C_SCL               (9U)                          // DS3231 SCL pin
@@ -425,11 +428,15 @@ static const uint8_t defaultSettings[][3] PROGMEM = {
 #define SOFT_DELAY             (1U)   // задержка для смены кадров FPSdelay задается програмно прямо в теле эффекта
 #define LOW_DELAY             (15U)   // низкая фиксированная задержка для смены кадров
 #define HIGH_DELAY            (50U)   // высокая фиксированная задержка для смены кадров
-#define DYNAMIC_DELAY_TICK    if (millis() - effTimer >= (256U - modes[currentMode].Speed))
-#define HIGH_DELAY_TICK       if (millis() - effTimer >= 50)
-#define LOW_DELAY_TICK        if (millis() - effTimer >= 15)
-#define MICRO_DELAY_TICK      if (millis() - effTimer >= 2)
-#define SOFT_DELAY_TICK       if (millis() - effTimer >= FPSdelay)
+
+uint16_t matrixFrameDelay(uint16_t baseDelay);
+uint16_t dynamicFrameDelay();
+
+#define DYNAMIC_DELAY_TICK    if (millis() - effTimer >= dynamicFrameDelay())
+#define HIGH_DELAY_TICK       if (millis() - effTimer >= matrixFrameDelay(50U))
+#define LOW_DELAY_TICK        if (millis() - effTimer >= matrixFrameDelay(15U))
+#define MICRO_DELAY_TICK      if (millis() - effTimer >= matrixFrameDelay(2U))
+#define SOFT_DELAY_TICK       if (millis() - effTimer >= matrixFrameDelay(FPSdelay))
 
 #define BRIGHTNESS            (40U)                         // стандартная маскимальная яркость (0-255). используется только в момент включения питания лампы
 

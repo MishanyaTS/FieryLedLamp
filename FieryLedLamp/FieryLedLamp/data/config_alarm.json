@@ -8,5 +8,10 @@
 "a7":0,"h7":10,"m7":0,
 "t":1,
 "after":5,
-"a_br":100
+"a_br":100,
+"on_alm_snd":0,
+"alm_vol":10,
+"alm_fold":99,
+"on_alm_adv":0,
+"on_alm_wadv":0
 }

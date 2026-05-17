@@ -247,6 +247,7 @@ void fillNoiseLED()
       }
 
       noise[i][j] = data;
+      effectServiceTick();
     }
   }
   z += speed;
@@ -292,6 +293,7 @@ void fillnoise8()
     {
       int32_t joffset = scale * j;
       noise[i][j] = inoise8(x + ioffset, y + joffset, z);
+      effectServiceTick();
     }
   }
   z += speed;

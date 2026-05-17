@@ -112,6 +112,7 @@ RtcDateTime timeToSet;
 
 uint8_t matrixWidth = WIDTH_DEFAULT;
 uint8_t matrixHeight = HEIGHT_DEFAULT;
+uint8_t ledDataLines = 2U;
 CRGB leds[NUM_LEDS_MAX];
 WiFiUDP Udp;
 bool apFallbackActive = false;
@@ -218,6 +219,19 @@ uint32_t scrollTimer = 0LL;
 uint8_t currentMode;
 bool loadingFlag = true;
 bool ONflag = false;
+
+#if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
+static inline bool mosfetShouldBeOn()
+{
+  return ONflag || (dawnFlag == 1 && !manualOff) || (sunsetFlag == 1 && !manualsOff);
+}
+
+static inline void updateMosfetState()
+{
+  digitalWrite(MOSFET_PIN, mosfetShouldBeOn() ? MOSFET_LEVEL : !MOSFET_LEVEL);
+}
+#endif
+
 //uint32_t eepromTimeout;
 //bool settChanged = false;
 #if USE_BUTTON
@@ -256,6 +270,83 @@ bool FavoritesManager::rndCycle = false;
 char TextTicker [86];
 int Painting = 0; CRGB DriwingColor = CRGB(255, 255, 255);
 
+static inline bool matrixUseTwoDataLines()
+{
+  return (NUM_LEDS > LED_2LINES_AFTER_LEDS && ledDataLines == 2U);
+}
+
+static inline bool matrixConnectionRotated()
+{
+  return (ORIENTATION == 1U || ORIENTATION == 3U || ORIENTATION == 5U || ORIENTATION == 7U);
+}
+
+static inline uint16_t matrixPhysicalRowLength()
+{
+  return matrixConnectionRotated() ? (uint16_t)HEIGHT : (uint16_t)WIDTH;
+}
+
+static inline uint16_t matrixPhysicalRows()
+{
+  return matrixConnectionRotated() ? (uint16_t)WIDTH : (uint16_t)HEIGHT;
+}
+
+static uint16_t matrixDataSplitIndex()
+{
+  const uint16_t rowLength = matrixPhysicalRowLength();
+  const uint16_t rowsCount = matrixPhysicalRows();
+  const uint16_t rowsLine1 = rowsCount / 2U;
+  uint16_t splitIndex = rowLength * rowsLine1;
+
+  // Защита от некорректной конфигурации. В норме сюда не попадём.
+  if (splitIndex == 0U || splitIndex >= NUM_LEDS)
+  {
+    splitIndex = NUM_LEDS / 2U;
+  }
+
+  return splitIndex;
+}
+
+template<EOrder RGB_ORDER>
+static void addMatrixLedsForOrder()
+{
+  if (matrixUseTwoDataLines())
+  {
+    const uint16_t ledsLine1 = matrixDataSplitIndex();
+    const uint16_t ledsLine2 = NUM_LEDS - ledsLine1;
+
+    FastLED.addLeds<WS2812B, LED_PIN,   RGB_ORDER>(&leds[0],         ledsLine1);
+    FastLED.addLeds<WS2812B, LED_PIN_2, RGB_ORDER>(&leds[ledsLine1], ledsLine2);
+
+    LOG.printf_P(PSTR("Матрица: %ux%u, %u LED, 2 DATA-линии: GPIO%u = %u LED, GPIO%u = %u LED\n"),
+                 WIDTH, HEIGHT, NUM_LEDS, LED_PIN, ledsLine1, LED_PIN_2, ledsLine2);
+    LOG.printf_P(PSTR("Разделение DATA по строкам: строка разрыва %u из %u, длина физической строки %u LED\n"),
+                 matrixPhysicalRows() / 2U, matrixPhysicalRows(), matrixPhysicalRowLength());
+  }
+  else
+  {
+    FastLED.addLeds<WS2812B, LED_PIN, RGB_ORDER>(leds, NUM_LEDS);
+
+    LOG.printf_P(PSTR("Матрица: %ux%u, %u LED, 1 DATA-линия: GPIO%u\n"),
+                 WIDTH, HEIGHT, NUM_LEDS, LED_PIN);
+  }
+}
+
+static void addMatrixLeds()
+{
+  switch (colorOrder)
+  {
+    case 0: addMatrixLedsForOrder<RGB>(); break;
+    case 1: addMatrixLedsForOrder<RBG>(); break;
+    case 2: addMatrixLedsForOrder<GRB>(); break;
+    case 3: addMatrixLedsForOrder<GBR>(); break;
+    case 4: addMatrixLedsForOrder<BRG>(); break;
+    case 5:
+    default:
+      addMatrixLedsForOrder<BGR>();
+      break;
+  }
+}
+
 //..................... Переменные, добавленные с внедрением web интерфейса .............................................................................................
 #define _empty 0x00
 #define _dash  0b01000000
@@ -277,6 +368,7 @@ uint8_t Favorit_only;
 uint32_t my_timer;
 uint8_t time_always;
 uint8_t weather_always;
+uint8_t show_weather_desc = 1;
 bool connect = false;
 uint32_t lastResolveTryMoment = 0xFFFFFFFFUL;
 uint8_t PRINT_TIME ;
@@ -320,11 +412,23 @@ uint8_t sunsetflag_sound = false;    // Звук не начал обслужи�
 //uint8_t tmp_fold;
 bool advert_flag = false;            // Озвучивается время
 bool advert_hour;                    // Озвучиваются часы времени
-uint8_t day_advert_volume;           // Дневная громкость озвучивания времени
-uint8_t night_advert_volume;         // Ночная громкость озвучивания времени
+bool weather_advert_flag = false;    // Озвучивается температура/описание погоды
+uint8_t weather_advert_state = 0;    // 0 - стоп, 1 - проигрываются фрагменты, 2 - завершение
+uint8_t weather_advert_index = 0;    // Текущий фрагмент озвучки погоды
+uint8_t weather_advert_count = 0;    // Количество фрагментов озвучки погоды
+uint16_t weather_advert_tracks[5];   // Температура + до 4 файлов описания погоды
+uint32_t weather_advert_timer = 0;   // Таймер озвучки температуры
+uint8_t day_advert_volume;           // Дневная громкость озвучивания времени/температуры
+uint8_t night_advert_volume;         // Ночная громкость озвучивания времени/температуры
 bool day_advert_sound_on;            // Вкл.Выкл озвучивания времени днём
 bool night_advert_sound_on;          // Вкл.Выкл озвучивания времени ночью
 bool alarm_advert_sound_on;          // Вкл.Выкл озвучивания времени будильником
+bool day_weather_advert_sound_on;          // Вкл.Выкл озвучивания температуры погоды днём
+bool night_weather_advert_sound_on;        // Вкл.Выкл озвучивания температуры погоды ночью
+bool alarm_weather_advert_sound_on;        // Вкл.Выкл озвучивания температуры погоды во время будильника
+bool day_weather_desc_advert_sound_on;     // Вкл.Выкл озвучивания описания погоды днём
+bool night_weather_desc_advert_sound_on;   // Вкл.Выкл озвучивания описания погоды ночью
+bool alarm_weather_desc_advert_sound_on;   // Вкл.Выкл озвучивания описания погоды во время будильника
 uint8_t mp3_player_connect = 0;      // Плеер не подключен. true - подключен.
 uint8_t mp3_player_on = 1;            // Использовать MP3-плеер: 0 - выкл, 1 - вкл
 uint8_t mp3_folder_last=255;         // Предыдущая папка для воспроизведения
@@ -333,6 +437,7 @@ bool set_mp3_play_now=false;         // Указывает, надо ли игр
 uint32_t alarm_timer;                // Периодичность проверки и плавного изменения громкости будильника
 uint32_t sunset_timer;               // Периодичность проверки и плавного изменения громкости заката
 uint32_t mp3_timer = 0;
+uint32_t mp3_check_timer = 0;       // Периодическая проверка связи с MP3-плеером
 bool mp3_stop = true;                // Озвучка эффектов остановлена
 bool pause_on = true;                // Озвучка эффектов на паузе. false - не на паузе
 uint8_t eff_volume = 9;              // Громкость воспроизведения
@@ -345,7 +450,7 @@ HardwareSerial mp3(1);              // Используем UART1
 //#endif
 uint8_t mp3_receive_buf[10];
 uint8_t effects_folders[MODE_AMOUNT];    // Номера папок для озвучивания
-uint16_t ADVERT_TIMER_H, ADVERT_TIMER_M; // Продолжительность озвучивания часов и минут
+uint16_t ADVERT_TIMER_H, ADVERT_TIMER_M, ADVERT_TIMER_W, ADVERT_TIMER_WDESC; // Продолжительность озвучивания часов, минут, температуры погоды и описания погоды
 uint8_t mp3_delay;                       // Задержка между командами проигрывателя
 uint8_t send_sound = 1;                  // Передавать или нет сомнительным параметрам звука (папка,озвучивание_on/off,громкость)
 uint8_t send_eff_volume = 1;             // Передавать или нет озвучивания_on/off, громкость
@@ -571,6 +676,14 @@ void setup()  //================================================================
     String matrixHeightCfg = jsonRead(configHardware, "m_h");
     matrixWidth = matrixWidthCfg.length() ? constrain(matrixWidthCfg.toInt(), WIDTH_MIN, WIDTH_MAX) : WIDTH_DEFAULT;
     matrixHeight = matrixHeightCfg.length() ? constrain(matrixHeightCfg.toInt(), HEIGHT_MIN, HEIGHT_MAX) : HEIGHT_DEFAULT;
+
+    String dataLinesCfg = jsonRead(configHardware, "data_lines");
+    ledDataLines = (dataLinesCfg.length() && dataLinesCfg.toInt() == 1) ? 1U : 2U;
+    if (!dataLinesCfg.length())
+    {
+      jsonWrite(configHardware, "data_lines", ledDataLines);
+      writeFile(F("config_hardware.json"), configHardware);
+    }
   }
   #if USE_BUTTON
   if (button_type) {
@@ -582,6 +695,7 @@ void setup()  //================================================================
   }
   touch.setDirection(NORM_OPEN);
   touch.setTimeout(BUTTON_CLICK_TIMEOUT);
+  touch.setClickTimeout(BUTTON_CLICK_TIMEOUT);
   touch.setStepTimeout(BUTTON_STEP_TIMEOUT);
 #endif
 
@@ -638,18 +752,27 @@ void setup()  //================================================================
   PRINT_TIME = jsonReadtoInt(configSetup, "print_time");
   PRINT_WEATHER = jsonReadtoInt(configSetup, "print_weather");
   #if USE_TFT
-  tft_clock_color = jsonReadtoInt(configSetup, "tft_clock_color");
-  tft_weather_color = jsonReadtoInt(configSetup, "tft_weather_color");
-  tft_ticker_on = jsonReadtoInt(configSetup, "tft_ticker_on");
-  tft_ticker_color = jsonReadtoInt(configSetup, "tft_ticker_color");
-  tft_ticker_speed = jsonReadtoInt(configSetup, "tft_ticker_speed");
-  tft_ticker_period = jsonReadtoInt(configSetup, "tft_ticker_period");
-  (jsonRead(configSetup, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configSetup, "tft_ticker_text")).length() + 1);
+  {
+    String configDisplay = readFile(F("config_display.json"), 1024);
+    if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+    tft_clock_color = jsonReadtoInt(configDisplay, "tft_clock_color");
+    tft_weather_color = jsonReadtoInt(configDisplay, "tft_weather_color");
+    tft_ticker_on = jsonReadtoInt(configDisplay, "tft_ticker_on");
+    tft_ticker_color = jsonReadtoInt(configDisplay, "tft_ticker_color");
+    tft_ticker_speed = jsonReadtoInt(configDisplay, "tft_ticker_speed");
+    tft_ticker_period = jsonReadtoInt(configDisplay, "tft_ticker_period");
+    (jsonRead(configDisplay, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configDisplay, "tft_ticker_text")).length() + 1);
+  }
   #endif
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
   time_always = jsonReadtoInt(configSetup, "time_always");
   #if USE_WEATHER
   weather_always = jsonReadtoInt(configSetup, "weather_always");
+  {
+    String showWeatherDescCfg = jsonRead(configSetup, "show_weather_desc");
+    show_weather_desc = showWeatherDescCfg.length() ? showWeatherDescCfg.toInt() : 1;
+    if (!showWeatherDescCfg.length()) jsonWrite(configSetup, "show_weather_desc", show_weather_desc);
+  }
   #endif
   (jsonRead(configSetup, "run_text")).toCharArray (TextTicker, (jsonRead(configSetup, "run_text")).length()+1);
   NIGHT_HOURS_START = 60U * jsonReadtoInt(configSetup, "night_time");
@@ -726,16 +849,55 @@ void setup()  //================================================================
   #if USE_MP3_PLAYER
   eff_volume = jsonReadtoInt(configSetup, "vol");
   eff_sound_on = (jsonReadtoInt(configSetup, "on_sound")==0)? 0 : eff_volume;
-  alarm_volume = jsonReadtoInt(configSetup, "alm_vol");
-  AlarmFolder = jsonReadtoInt(configSetup, "alm_fold");
-  alarm_sound_on = jsonReadtoInt(configSetup, "on_alm_snd");
-  sunset_volume = jsonReadtoInt(configSetup, "sun_vol");
-  SunsetFolder = jsonReadtoInt(configSetup, "sun_fold");
-  sunset_sound_on = jsonReadtoInt(configSetup, "on_sun_snd");
+
+  String configAlarm = readFile(F("config_alarm.json"), 512);
+  String alarmVolumeCfg = jsonRead(configAlarm, "alm_vol");
+  alarm_volume = alarmVolumeCfg.length() ? alarmVolumeCfg.toInt() : 10;
+  String alarmFolderCfg = jsonRead(configAlarm, "alm_fold");
+  AlarmFolder = alarmFolderCfg.length() ? alarmFolderCfg.toInt() : 99;
+  String alarmSoundCfg = jsonRead(configAlarm, "on_alm_snd");
+  alarm_sound_on = alarmSoundCfg.length() ? alarmSoundCfg.toInt() : 0;
+
+  String configSunset = readFile(F("config_sunset.json"), 512);
+  sunset_volume = jsonReadtoInt(configSunset, "sun_vol");
+  SunsetFolder = jsonReadtoInt(configSunset, "sun_fold");
+  sunset_sound_on = jsonReadtoInt(configSunset, "on_sun_snd");
   day_advert_sound_on = jsonReadtoInt(configSetup,"on_day_adv");
   night_advert_sound_on = jsonReadtoInt(configSetup,"on_night_adv");
+  String dayWeatherAdvCfg = jsonRead(configSetup,"on_day_wadv");
+  if (dayWeatherAdvCfg.length()) day_weather_advert_sound_on = dayWeatherAdvCfg.toInt();
+  else {
+    day_weather_advert_sound_on = day_advert_sound_on;
+    jsonWrite(configSetup, "on_day_wadv", day_weather_advert_sound_on);
+  }
+  String nightWeatherAdvCfg = jsonRead(configSetup,"on_night_wadv");
+  if (nightWeatherAdvCfg.length()) night_weather_advert_sound_on = nightWeatherAdvCfg.toInt();
+  else {
+    night_weather_advert_sound_on = night_advert_sound_on;
+    jsonWrite(configSetup, "on_night_wadv", night_weather_advert_sound_on);
+  }
+
+  String dayWeatherDescCfg = jsonRead(configSetup,"on_day_wdesc");
+  if (dayWeatherDescCfg.length()) day_weather_desc_advert_sound_on = dayWeatherDescCfg.toInt();
+  else {
+    day_weather_desc_advert_sound_on = day_weather_advert_sound_on;
+    jsonWrite(configSetup, "on_day_wdesc", day_weather_desc_advert_sound_on);
+  }
+
+  String nightWeatherDescCfg = jsonRead(configSetup,"on_night_wdesc");
+  if (nightWeatherDescCfg.length()) night_weather_desc_advert_sound_on = nightWeatherDescCfg.toInt();
+  else {
+    night_weather_desc_advert_sound_on = night_weather_advert_sound_on;
+    jsonWrite(configSetup, "on_night_wdesc", night_weather_desc_advert_sound_on);
+  }
+
   day_advert_volume = jsonReadtoInt(configSetup,"day_vol");
-  alarm_advert_sound_on = jsonReadtoInt(configSetup,"on_alm_adv");
+  String alarmAdvertCfg = jsonRead(configAlarm,"on_alm_adv");
+  alarm_advert_sound_on = alarmAdvertCfg.length() ? alarmAdvertCfg.toInt() : 0;
+  String alarmWeatherAdvCfg = jsonRead(configAlarm,"on_alm_wadv");
+  alarm_weather_advert_sound_on = alarmWeatherAdvCfg.length() ? alarmWeatherAdvCfg.toInt() : alarm_advert_sound_on;
+  String alarmWeatherDescCfg = jsonRead(configAlarm,"on_alm_wdesc");
+  alarm_weather_desc_advert_sound_on = alarmWeatherDescCfg.length() ? alarmWeatherDescCfg.toInt() : alarm_weather_advert_sound_on;
   night_advert_volume = jsonReadtoInt(configSetup,"night_vol");
   Equalizer = jsonReadtoInt(configSetup, "eq");
   send_sound = jsonReadtoInt(configSetup, "s_s");
@@ -747,9 +909,18 @@ void setup()  //================================================================
   MATRIX_TYPE = jsonReadtoInt(configHardware, "m_t");
   ORIENTATION = jsonReadtoInt(configHardware, "m_o");
   colorOrder = jsonReadtoInt(configHardware, "color_order");
+  {
+    String dataLinesCfg = jsonRead(configHardware, "data_lines");
+    ledDataLines = (dataLinesCfg.length() && dataLinesCfg.toInt() == 1) ? 1U : 2U;
+  }
   #if USE_MP3_PLAYER
   ADVERT_TIMER_H = 100 * jsonReadtoInt(configHardware, "tim_h");
   ADVERT_TIMER_M = 100 * jsonReadtoInt(configHardware, "tim_m");
+  ADVERT_TIMER_W = 100 * jsonReadtoInt(configHardware, "tim_w");
+  {
+    String weatherDescTimerCfg = jsonRead(configHardware, "tim_wdesc");
+    ADVERT_TIMER_WDESC = 100 * (weatherDescTimerCfg.length() ? weatherDescTimerCfg.toInt() : jsonReadtoInt(configHardware, "tim_w"));
+  }
   mp3_delay = 10 * jsonReadtoInt(configHardware, "delay");
   #endif
   #if USE_BUTTON
@@ -799,15 +970,9 @@ void setup()  //================================================================
 
 
   // ЛЕНТА/МАТРИЦА
-  switch(colorOrder) {
-  case 0: FastLED.addLeds<WS2812B, LED_PIN, RGB>(leds, NUM_LEDS); break;
-  case 1: FastLED.addLeds<WS2812B, LED_PIN, RBG>(leds, NUM_LEDS); break;
-  case 2: FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS); break;
-  case 3: FastLED.addLeds<WS2812B, LED_PIN, GBR>(leds, NUM_LEDS); break;
-  case 4: FastLED.addLeds<WS2812B, LED_PIN, BRG>(leds, NUM_LEDS); break;
-  case 5: FastLED.addLeds<WS2812B, LED_PIN, BGR>(leds, NUM_LEDS); break;
-}
+  addMatrixLeds();
   FastLED.setBrightness(BRIGHTNESS);
+  FastLED.setDither(BINARY_DITHER);   // более мягкие переходы на низкой яркости
   if (current_limit > 0)
   {
     FastLED.setMaxPowerInVoltsAndMilliamps(5, current_limit);
@@ -827,11 +992,10 @@ void setup()  //================================================================
 
   if(DONT_TURN_ON_AFTER_SHUTDOWN){
       ONflag = false;
+  jsonWrite(configSetup, "Power", ONflag);
   }
   else
-  {
       ONflag = jsonReadtoInt (configSetup, "Power");  // Чтение состояния лампы вкл/выкл,текущий эффект,яркость,скорость,масштаб
-  }
   currentMode = jsonReadtoInt (configSetup, "eff_sel");
   modes[currentMode].Brightness = jsonReadtoInt (configSetup, "br");
   modes[currentMode].Speed = jsonReadtoInt (configSetup, "sp");
@@ -902,11 +1066,8 @@ void setup()  //================================================================
           delay(1);
           FastLED.show();
         }
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-        digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-      #endif
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-        digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // возвращаем MOSFET в состояние лампы/рассвета/заката
+        updateMosfetState();
       #endif
         loadingFlag = true;
       #endif  // DISPLAY_IP_AT_START
@@ -1034,11 +1195,8 @@ void setup()  //================================================================
           delay(1);
           FastLED.show();
         }
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-        digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-      #endif
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-        digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // возвращаем MOSFET в состояние лампы/рассвета/заката
+        updateMosfetState();
       #endif
         loadingFlag = true;
       #endif  // DISPLAY_IP_AT_START
@@ -1127,8 +1285,10 @@ void setup()  //================================================================
 
   //TM1637 || TFT
 #if (USE_TM1637 || USE_TFT)
-    uint32_t tmpClock   = jsonReadtoInt(configSetup, "clock_time");
-    uint32_t tmpWeather = jsonReadtoInt(configSetup, "weather_time");
+    String configDisplay = readFile(F("config_display.json"), 1024);
+    if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+    uint32_t tmpClock   = jsonReadtoInt(configDisplay, "clock_time");
+    uint32_t tmpWeather = jsonReadtoInt(configDisplay, "weather_time");
     if (tmpClock < 3)   tmpClock = 10;
     if (tmpWeather < 3) tmpWeather = 5;
     CLOCK_SHOW_INTERVAL   = tmpClock * 1000UL;
@@ -1286,6 +1446,10 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
  
   parseUDP();
   yield();
+
+  if (Painting == 0) {
+    effectsTick();
+  }
   
   #if USE_TM1637
      if (tm1637_on && millis() - tmr_clock > 500UL) {         // каждую секунду изменяем
@@ -1313,7 +1477,13 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #if USE_MP3_PLAYER
   if (mp3_player_on) {
     switch (mp3_player_connect){
-      case 0: break;
+      case 0:
+      case 5:
+              if (millis() - mp3_timer > 30000UL) {
+                mp3_timer = millis();
+                mp3_player_connect = 1;
+              }
+              break;
       case 1: read_command(1);
               if ((millis() - mp3_timer > 3000UL) || mp3_receive_buf[3] == 0x3F){
                  first_entry = 5;
@@ -1325,7 +1495,10 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
               if ( millis() - mp3_timer > 3000UL || mp3_receive_buf[3] == 0x3F) mp3_player_connect = 3;
               break;
       case 3: mp3_setup(); break;
-      case 4: mp3_loop(); break;
+      case 4:
+              mp3_periodic_check();
+              if (mp3_player_connect == 4) mp3_loop();
+              break;
     }
   }
                     
@@ -1333,8 +1506,6 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
 
  if (Painting == 0) {
      
-  effectsTick();
-  
   #if HEAP_SIZE_PRINT
    if (millis() - mem_timer > 10000UL) {
        mem_timer = millis();
@@ -1509,87 +1680,235 @@ String normalizeCond(String s) {
   if (!s.length()) return "";
 
   String low = toLowerCopy(s);
+  low.replace('_', '-');
+  low.replace(' ', '-');
 
-  if (low.indexOf('-') >= 0) return low;
+  if (low == "overcast-thunderstorms-with-rain") return "overcast-thunderstorms-with-rain";
+  if (low == "thunderstorm-with-hail")          return "thunderstorm-with-hail";
+  if (low == "thunderstorm-with-rain")          return "thunderstorm-with-rain";
+  if (low == "partly-cloudy-and-light-rain")    return "partly-cloudy-and-light-rain";
+  if (low == "partly-cloudy-and-rain")          return "partly-cloudy-and-rain";
+  if (low == "overcast-and-light-rain")         return "overcast-and-light-rain";
+  if (low == "overcast-and-rain")               return "overcast-and-rain";
+  if (low == "cloudy-and-light-rain")           return "cloudy-and-light-rain";
+  if (low == "cloudy-and-rain")                 return "cloudy-and-rain";
+  if (low == "overcast-and-wet-snow")           return "overcast-and-wet-snow";
+  if (low == "partly-cloudy-and-light-snow")    return "partly-cloudy-and-light-snow";
+  if (low == "partly-cloudy-and-snow")          return "partly-cloudy-and-snow";
+  if (low == "overcast-and-light-snow")         return "overcast-and-light-snow";
+  if (low == "overcast-and-snow")               return "overcast-and-snow";
+  if (low == "cloudy-and-light-snow")           return "cloudy-and-light-snow";
+  if (low == "cloudy-and-snow")                 return "cloudy-and-snow";
   if (low == "clear" || low == "sunny") return "clear";
-  if (low == "partly cloudy" || low == "partly_cloudy" || low == "partlycloudy") return "partly-cloudy";
+  if (low == "partly-cloudy" || low == "partlycloudy") return "partly-cloudy";
   if (low == "cloudy") return "cloudy";
   if (low == "overcast") return "overcast";
+  if (low == "drizzle") return "drizzle";
+  if (low == "light-rain") return "light-rain";
   if (low == "rain") return "rain";
+  if (low == "moderate-rain") return "moderate-rain";
+  if (low == "heavy-rain") return "heavy-rain";
+  if (low == "continuous-heavy-rain") return "continuous-heavy-rain";
+  if (low == "showers") return "showers";
+  if (low == "wet-snow" || low == "sleet") return "wet-snow";
+  if (low == "light-snow") return "light-snow";
   if (low == "snow") return "snow";
+  if (low == "snow-showers" || low == "snowfall") return "snow-showers";
+  if (low == "snowstorm") return "snowstorm";
+  if (low == "heavy-snowstorm") return "heavy-snowstorm";
+  if (low == "thunderstorm") return "thunderstorm";
+  if (low == "hail") return "hail";
   if (low == "fog")  return "fog";
   if (low == "mist") return "mist";
   if (low == "haze") return "haze";
-  if (low == "smoke") return "smoke";
+  if (low == "smoke" || low == "smog") return "smoke";
   if (low == "dust") return "dust";
+  if (low == "dust-storm") return "dust-storm";
   if (low == "sand") return "sand";
-  if (low == "ash")  return "ash";
-  if (low == "hail") return "hail";
-  if (low.indexOf("дожд") >= 0) return "rain";
-  if (low.indexOf("снег")  >= 0) return "snow";
+  if (low == "ash" || low == "volcanic-eruption") return "ash";
+  if (low == "storm") return "storm";
+
+  if (low.indexOf("гроз") >= 0) {
+    if (low.indexOf("град") >= 0) return "thunderstorm-with-hail";
+    if (low.indexOf("дожд") >= 0 || low.indexOf("лив") >= 0) return "thunderstorm-with-rain";
+    return "thunderstorm";
+  }
+  if (low.indexOf("град") >= 0) return "hail";
+  if (low.indexOf("мокр") >= 0 && low.indexOf("снег") >= 0) return "wet-snow";
+  if (low.indexOf("метел") >= 0 || low.indexOf("буран") >= 0) return "snowstorm";
+  if (low.indexOf("лив") >= 0) return "showers";
+  if (low.indexOf("морос") >= 0) return "drizzle";
+  if (low.indexOf("дожд") >= 0) {
+    if (low.indexOf("затяж") >= 0 || low.indexOf("продолж") >= 0) return "continuous-heavy-rain";
+    if (low.indexOf("сильн") >= 0) return "heavy-rain";
+    if (low.indexOf("умерен") >= 0) return "moderate-rain";
+    if (low.indexOf("слаб") >= 0 || low.indexOf("небольш") >= 0) return "light-rain";
+    return "rain";
+  }
+  if (low.indexOf("снег") >= 0 || low.indexOf("снеж") >= 0) {
+    if (low.indexOf("сильн") >= 0 || low.indexOf("снегопад") >= 0) return "snow-showers";
+    if (low.indexOf("слаб") >= 0 || low.indexOf("небольш") >= 0) return "light-snow";
+    return "snow";
+  }
   if (low.indexOf("туман") >= 0) return "fog";
-  if (low.indexOf("смог")  >= 0) return "smoke";
-  if (low.indexOf("пасмур")>= 0) return "overcast";
+  if (low.indexOf("дымк") >= 0) return "haze";
+  if (low.indexOf("смог") >= 0 || low.indexOf("дым") >= 0) return "smoke";
+  if (low.indexOf("пыльн") >= 0 || low.indexOf("пыл") >= 0) return "dust";
+  if (low.indexOf("пес") >= 0) return "sand";
+  if (low.indexOf("пеп") >= 0 || low.indexOf("вулкан") >= 0) return "ash";
+  if (low.indexOf("шторм") >= 0) return "storm";
+  if (low.indexOf("пасмур") >= 0) return "overcast";
+  if (low.indexOf("малооблач") >= 0 || low.indexOf("переменн") >= 0 || low.indexOf("прояснен") >= 0) return "partly-cloudy";
   if (low.indexOf("облач") >= 0) return "cloudy";
-  if (low.indexOf("ясн")   >= 0) return "clear";
+  if (low.indexOf("ясн") >= 0) return "clear";
+
+  if (low.indexOf("thunder") >= 0) {
+    if (low.indexOf("hail") >= 0) return "thunderstorm-with-hail";
+    if (low.indexOf("rain") >= 0) return "thunderstorm-with-rain";
+    return "thunderstorm";
+  }
+  if (low.indexOf("hail") >= 0) return "hail";
+  if (low.indexOf("sleet") >= 0 || (low.indexOf("wet") >= 0 && low.indexOf("snow") >= 0)) return "wet-snow";
+  if (low.indexOf("snowstorm") >= 0 || low.indexOf("blizzard") >= 0) return "snowstorm";
+  if (low.indexOf("showers") >= 0 && low.indexOf("snow") >= 0) return "snow-showers";
+  if (low.indexOf("showers") >= 0 || low.indexOf("shower") >= 0) return "showers";
+  if (low.indexOf("drizzle") >= 0) return "drizzle";
+  if (low.indexOf("rain") >= 0) {
+    if (low.indexOf("continuous") >= 0) return "continuous-heavy-rain";
+    if (low.indexOf("heavy") >= 0) return "heavy-rain";
+    if (low.indexOf("moderate") >= 0) return "moderate-rain";
+    if (low.indexOf("light") >= 0) return "light-rain";
+    return "rain";
+  }
+  if (low.indexOf("snow") >= 0) {
+    if (low.indexOf("heavy") >= 0) return "snow-showers";
+    if (low.indexOf("light") >= 0) return "light-snow";
+    return "snow";
+  }
+  if (low.indexOf("fog") >= 0) return "fog";
+  if (low.indexOf("mist") >= 0) return "mist";
+  if (low.indexOf("haze") >= 0) return "haze";
+  if (low.indexOf("smoke") >= 0 || low.indexOf("smog") >= 0) return "smoke";
+  if (low.indexOf("dust-storm") >= 0) return "dust-storm";
+  if (low.indexOf("dust") >= 0) return "dust";
+  if (low.indexOf("sand") >= 0) return "sand";
+  if (low.indexOf("ash") >= 0 || low.indexOf("volcanic") >= 0) return "ash";
+  if (low.indexOf("storm") >= 0) return "storm";
+  if (low.indexOf("overcast") >= 0) return "overcast";
+  if (low.indexOf("partly-cloudy") >= 0) return "partly-cloudy";
+  if (low.indexOf("cloudy") >= 0) return "cloudy";
+  if (low.indexOf("clear") >= 0) return "clear";
 
   return low;
 }
+
 String yandexIconToCond(String icon) {
   icon.trim();
   if (!icon.length()) return "";
 
   String s = toLowerCopy(icon);
-  s.replace("-d", "");
-  s.replace("-n", "");
 
+  if (s.endsWith("_d") || s.endsWith("_n") || s.endsWith("-d") || s.endsWith("-n")) {
+    s.remove(s.length() - 2);
+  }
+
+  if (s == "skc") return "clear";
+  if (s == "fg")  return "fog";
+  if (s == "bkn") return "partly-cloudy";
+  if (s == "ovc") return "overcast";
+  if (s == "ovc-ts-ra" || s == "ovc_ts_ra") return "overcast-thunderstorms-with-rain";
+  if (s == "ovc-ts-ha" || s == "ovc_ts_ha") return "thunderstorm-with-hail";
+  if (s.indexOf("ts") >= 0 && s.indexOf("ha") >= 0) return "thunderstorm-with-hail";
+  if (s.indexOf("ts") >= 0 && s.indexOf("ra") >= 0) return "thunderstorm-with-rain";
   if (s.indexOf("ts") >= 0) return "thunderstorm";
-  if (s.indexOf("fg") >= 0) return "fog";
-  if (s.indexOf("sm") >= 0) return "smoke";
-  if (s.indexOf("gr") >= 0) return "hail";
-  if (s.indexOf("ra") >= 0) return "rain";
-  if (s.indexOf("sn") >= 0) return "snow";
-  if (s.indexOf("skc") >= 0) return "clear";
-  if (s.indexOf("bkn") >= 0) return "cloudy";
-  if (s.indexOf("ovc") >= 0) return "overcast";
+  if (s.indexOf("ra_sn") >= 0 || s.indexOf("ra-sn") >= 0) return "wet-snow";
+  if (s.indexOf("+ra") >= 0) {
+    if (s.indexOf("ovc") >= 0) return "overcast-and-rain";
+    return "heavy-rain";
+  }
+  if (s.indexOf("-ra") >= 0) {
+    if (s.indexOf("ovc") >= 0) return "overcast-and-light-rain";
+    if (s.indexOf("bkn") >= 0) return "partly-cloudy-and-light-rain";
+    return "light-rain";
+  }
+  if (s.indexOf("_ra") >= 0 || s.indexOf("-ra") >= 0 || s.endsWith("ra")) {
+    if (s.indexOf("ovc") >= 0) return "cloudy-and-rain";
+    if (s.indexOf("bkn") >= 0) return "partly-cloudy-and-rain";
+    return "rain";
+  }
+
+  if (s.indexOf("+sn") >= 0) return "snow-showers";
+  if (s.indexOf("-sn") >= 0) {
+    if (s.indexOf("ovc") >= 0) return "overcast-and-light-snow";
+    if (s.indexOf("bkn") >= 0) return "partly-cloudy-and-light-snow";
+    return "light-snow";
+  }
+  if (s.indexOf("_sn") >= 0 || s.indexOf("-sn") >= 0 || s.endsWith("sn")) {
+    if (s.indexOf("ovc") >= 0) return "cloudy-and-snow";
+    if (s.indexOf("bkn") >= 0) return "partly-cloudy-and-snow";
+    return "snow";
+  }
+
+  if (s == "-bl") return "snowstorm";
+  if (s == "bl")  return "heavy-snowstorm";
+  if (s == "dst") return "dust";
+  if (s == "du_st" || s == "du-st") return "dust-storm";
+  if (s == "smog") return "smoke";
+  if (s == "strm") return "storm";
+  if (s == "vlka") return "ash";
+  if (s.indexOf("ha") >= 0) return "hail";
 
   return "";
 }
 
 String buildYandexRuFromCond(const String& cond, float temp) {
   String desc;
-  if      (cond == "clear")         desc = "ясно";
-  else if (cond == "partly-cloudy") desc = "малооблачно";
-  else if (cond == "cloudy")        desc = "облачно";
-  else if (cond == "overcast")      desc = "пасмурно";
-  else                              desc = "";
 
-  if (cond == "smoke" || cond == "haze") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", смог";
-  } else if (cond == "fog" || cond == "mist") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", туман";
-  } else if (cond == "dust" || cond == "sand" || cond == "ash") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", пыльная мгла";
-  } else if (cond == "thunderstorm") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", гроза";
-  } else if (cond == "hail") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", град";
-  } else if (cond == "snow") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", идёт снег";
-  } else if (cond == "rain") {
-    if (!desc.length()) desc = "пасмурно";
-    desc += ", идёт дождь";
-  }
+  if      (cond == "clear")                              desc = "ясно";
+  else if (cond == "partly-cloudy")                      desc = "малооблачно";
+  else if (cond == "cloudy")                             desc = "облачно";
+  else if (cond == "overcast")                           desc = "пасмурно";
+  else if (cond == "drizzle")                            desc = "морось";
+  else if (cond == "light-rain")                         desc = "слабый дождь";
+  else if (cond == "rain")                               desc = "идёт дождь";
+  else if (cond == "moderate-rain")                      desc = "умеренный дождь";
+  else if (cond == "heavy-rain")                         desc = "сильный дождь";
+  else if (cond == "continuous-heavy-rain")              desc = "затяжной сильный дождь";
+  else if (cond == "showers")                            desc = "ливень";
+  else if (cond == "wet-snow")                           desc = "мокрый снег";
+  else if (cond == "light-snow")                         desc = "небольшой снег";
+  else if (cond == "snow")                               desc = "идёт снег";
+  else if (cond == "snow-showers")                       desc = "снегопад";
+  else if (cond == "hail")                               desc = "град";
+  else if (cond == "thunderstorm")                       desc = "гроза";
+  else if (cond == "thunderstorm-with-rain")             desc = "дождь, гроза";
+  else if (cond == "thunderstorm-with-hail")             desc = "гроза, град";
+  else if (cond == "partly-cloudy-and-light-rain")       desc = "малооблачно, слабый дождь";
+  else if (cond == "partly-cloudy-and-rain")             desc = "малооблачно, дождь";
+  else if (cond == "overcast-and-light-rain")            desc = "пасмурно, слабый дождь";
+  else if (cond == "overcast-and-rain")                  desc = "пасмурно, сильный дождь";
+  else if (cond == "overcast-thunderstorms-with-rain")   desc = "пасмурно, сильный дождь, гроза";
+  else if (cond == "cloudy-and-light-rain")              desc = "облачно, слабый дождь";
+  else if (cond == "cloudy-and-rain")                    desc = "облачно, дождь";
+  else if (cond == "overcast-and-wet-snow")              desc = "пасмурно, мокрый снег";
+  else if (cond == "partly-cloudy-and-light-snow")       desc = "малооблачно, небольшой снег";
+  else if (cond == "partly-cloudy-and-snow")             desc = "малооблачно, снег";
+  else if (cond == "overcast-and-light-snow")            desc = "пасмурно, небольшой снег";
+  else if (cond == "overcast-and-snow")                  desc = "пасмурно, снегопад";
+  else if (cond == "cloudy-and-light-snow")              desc = "облачно, небольшой снег";
+  else if (cond == "cloudy-and-snow")                    desc = "облачно, снег";
+  else if (cond == "fog")                                desc = "туман";
+  else if (cond == "mist" || cond == "haze")             desc = "дымка";
+  else if (cond == "smoke")                              desc = "смог";
+  else if (cond == "dust")                               desc = "пыльная мгла";
+  else if (cond == "dust-storm")                         desc = "пыльная буря";
+  else if (cond == "sand")                               desc = "песчаная мгла";
+  else if (cond == "ash")                                desc = "вулканический пепел";
+  else if (cond == "storm")                              desc = "шторм";
+  else if (cond == "snowstorm")                          desc = "метель";
+  else if (cond == "heavy-snowstorm")                    desc = "сильная метель";
 
-  if (!desc.length()) {
-    desc = tempToRussianFeeling(temp);
-  }
+  if (!desc.length()) desc = tempToRussianFeeling(temp);
   return desc;
 }
 

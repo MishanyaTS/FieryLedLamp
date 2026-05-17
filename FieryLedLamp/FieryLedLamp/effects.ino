@@ -1515,9 +1515,6 @@ static const uint8_t aquariumGIF[25][32][32] PROGMEM =
     {0x00, 0x00, 0x00, 0x00, 0x5e, 0x74, 0x4e, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6a, 0xb5, 0x7f, 0x31, 0x12, 0x23, 0x3d, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00}
   }
 };
-//uint8_t step = 0U;  // GIFframe = 0U; текущий кадр анимации (не важно, какой в начале)
-//uint8_t deltaHue = 0U; // GIFshiftx = 0U; какой-то там сдвиг текстуры по радиусу лампы
-//uint8_t deltaHue2 = 0U; // GIFshifty = 0U; какой-то там сдвиг текстуры по высоте
 
 #define CAUSTICS_BR                     (100U)                // яркость бликов в процентах (от чистого белого света)
 
@@ -1561,10 +1558,9 @@ void poolRoutine()
 
     for (uint8_t x = 0U; x < WIDTH ; x++) {
       for (uint8_t y = 0U; y < HEIGHT; y++) {
-        // y%32, x%32 - это для масштабирования эффекта на лампы размером большим, чем размер анимации 32х32, а также для произвольного сдвига текстуры
-        leds[XY(x, y)] = CHSV(hue, 255U - pgm_read_byte(&aquariumGIF[step][(y + deltaHue2) % 32U][(x + deltaHue) % 32U]) * CAUSTICS_BR / 100U, 255U);
-        // чтобы регулятор Масштаб начал вместо цвета регулировать яркость бликов, нужно закомментировать предыдущую строчку и раскоментировать следующую
-        //        leds[XY(x, y)] = CHSV(158U, 255U - pgm_read_byte(&aquariumGIF[step][(y+deltaHue2)%32U][(x+deltaHue)%32U]) * modes[currentMode].Scale / 100U, 255U);
+        const uint8_t texX = (WIDTH  <= 32U) ? ((x + deltaHue)  & 0x1FU) : ((((uint16_t)x * 32U) / WIDTH  + deltaHue)  & 0x1FU);
+        const uint8_t texY = (HEIGHT <= 32U) ? ((y + deltaHue2) & 0x1FU) : ((((uint16_t)y * 32U) / HEIGHT + deltaHue2) & 0x1FU);
+        leds[XY(x, y)] = CHSV(hue, 255U - pgm_read_byte(&aquariumGIF[step][texY][texX]) * CAUSTICS_BR / 100U, 255U);
       }
     }
     step++;
@@ -2354,11 +2350,8 @@ void showWarning(
   delay(1);
   FastLED.show();
 
-#if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-  digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-#endif
-#if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-  digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+#if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // возвращаем MOSFET в состояние лампы/рассвета/заката
+  updateMosfetState();
 #endif
 
   loadingFlag = true;                                       // принудительное отображение текущего эффекта (того, что был активен перед предупреждением)
@@ -4441,11 +4434,13 @@ void fire2012again()
 
 CRGB solidRainColor = CRGB(60, 80, 90);
 
-uint8_t wrapX(int8_t x) {
-  return (x + WIDTH) % WIDTH;
+uint8_t wrapX(int16_t x) {
+  while (x < 0) x += WIDTH;
+  return x % WIDTH;
 }
-uint8_t wrapY(int8_t y) {
-  return (y + HEIGHT) % HEIGHT;
+uint8_t wrapY(int16_t y) {
+  while (y < 0) y += HEIGHT;
+  return y % HEIGHT;
 }
 
 void rain(byte backgroundDepth, byte maxBrightness, byte spawnFreq, byte tailLength, CRGB rainColor, bool splashes, bool clouds, bool storm)
@@ -4508,13 +4503,9 @@ void rain(byte backgroundDepth, byte maxBrightness, byte spawnFreq, byte tailLen
 
     // Step 5. Add lightning if called for
     if (storm) {
-      //uint8_t lightning[WIDTH][HEIGHT];
-      // ESP32 does not like static arrays  https://github.com/espressif/arduino-esp32/issues/2567
-      uint8_t *lightning = (uint8_t *) malloc(WIDTH * HEIGHT);
-      while (lightning == NULL) {
-        //Serial.println("lightning malloc failed");
-      }
-
+      const uint16_t lightningSize = (uint16_t)WIDTH * (uint16_t)HEIGHT;
+      uint8_t *lightning = (uint8_t *) calloc(lightningSize, sizeof(uint8_t));
+      if (lightning == NULL) return;
 
       if (random16() < 72) {    // Odds of a lightning bolt
         lightning[scale8(random8(), WIDTH - 1) + (HEIGHT - 1) * WIDTH] = 255; // Random starting location
@@ -4556,13 +4547,8 @@ void rain(byte backgroundDepth, byte maxBrightness, byte spawnFreq, byte tailLen
       //const uint16_t cloudHeight = (HEIGHT*0.2)+1;
       const uint8_t cloudHeight = HEIGHT * 0.4 + 1; // это уже 40% c лишеним, но на высоких матрицах будет чуть меньше
 
-      // This is the array that we keep our computed noise values in
-      //static uint8_t noise[WIDTH][cloudHeight];
-      static uint8_t *noise = (uint8_t *) malloc(WIDTH * cloudHeight);
-
-      while (noise == NULL) {
-        //Serial.println("noise malloc failed");
-      }
+      static uint8_t *noise = (uint8_t *) calloc((uint16_t)WIDTH * (uint16_t)cloudHeight, sizeof(uint8_t));
+      if (noise == NULL) return;
       int xoffset = noiseScale * x + hue;
 
       for (uint8_t z = 0; z < cloudHeight; z++) {
@@ -5300,15 +5286,15 @@ void clockRoutine() {
 
   time_t currentLocalTime = getCurrentLocalTime();
 
-  if (minute(currentLocalTime) != hue2)
-  {
-    step = 1U;
-    hue = hour(currentLocalTime);
-    hue2 = minute(currentLocalTime);
-  }
-  //if (step > 0)
+uint8_t curHour = hour(currentLocalTime);
+uint8_t curMin  = minute(currentLocalTime);
+
+  if (curHour != hue || curMin != hue2)
 {
-    step--;
+  hue  = curHour;
+  hue2 = curMin;
+}
+{
     uint8_t sat = (modes[currentMode].Scale == 100) ? 0U : 255U;
 
     FastLED.clear();
@@ -5316,25 +5302,33 @@ void clockRoutine() {
     if (vertical)
     {
       // --- размеры блока ---
+      const uint8_t dotH = 1;
+      const uint8_t gapY = 1;
+
       uint8_t blockW = digitW * 2 + spacing;
-      uint8_t blockH = digitH * 2 + spacing;
+      uint8_t blockH = digitH * 2 + dotH + gapY * 2;
 
       // --- центрирование ---
-      uint8_t baseX = (WIDTH  - blockW) / 2;
+      uint8_t baseX = (WIDTH  - blockW) / 2 + 1;
       uint8_t baseY = (HEIGHT - blockH) / 2;
 
-      // --- минуты ---
-      drawDig3x5(baseX, baseY, hue2 / 10U % 10U, CHSV(deltaValue, sat, 255U));
-      drawDig3x5(baseX + digitW + spacing, baseY, hue2 % 10U, CHSV(deltaValue, sat, 255U));
+      // --- координаты по Y ---
+      uint8_t minY  = baseY;                       // минуты снизу
+      uint8_t dotsY = minY + digitH + gapY;         // точки между
+      uint8_t hourY = dotsY + dotH + gapY;          // часы сверху
 
       // --- часы ---
-      drawDig3x5(baseX, baseY + digitH + spacing, hue / 10U % 10U, CHSV(deltaValue, sat, 255U));
-      drawDig3x5(baseX + digitW + spacing, baseY + digitH + spacing, hue % 10U, CHSV(deltaValue, sat, 255U));
+      drawDig3x5(baseX, hourY, hue / 10U % 10U, CHSV(deltaValue, sat, 255U));
+      drawDig3x5(baseX + digitW + spacing, hourY, hue % 10U, CHSV(deltaValue, sat, 255U));
 
 #ifdef CLOCK_BLINKING
-      drawPixelXY(baseX + digitW - 1, baseY + digitH, CHSV(deltaValue, sat, blinkVal));
-      drawPixelXY(baseX + digitW + 1, baseY + digitH, CHSV(deltaValue, sat, blinkVal));
+      drawPixelXY(baseX + digitW - 1, dotsY, CHSV(deltaValue, sat, blinkVal));
+      drawPixelXY(baseX + digitW + 1, dotsY, CHSV(deltaValue, sat, blinkVal));
 #endif
+
+      // --- минуты ---
+      drawDig3x5(baseX, minY, hue2 / 10U % 10U, CHSV(deltaValue, sat, 255U));
+      drawDig3x5(baseX + digitW + spacing, minY, hue2 % 10U, CHSV(deltaValue, sat, 255U));
     }
     else
     {
@@ -5914,6 +5908,7 @@ void shadowsRoutine() {
   //byte bri_dx = map8(255-effectSpeed, 50, 100);
 
   for ( uint16_t i = 0 ; i < NUM_LEDS; i++) {
+    effectServiceTick();
     hue16 += hueinc16;
     uint8_t hue8 = hue16 / 256;
 
@@ -6455,10 +6450,10 @@ void LiquidLampRoutine(bool isColored) {
 
     if (isColored) {
       fillMyPal16((modes[currentMode].Scale - 1U) * 2.55, !(modes[currentMode].Scale & 0x01));
-      // Количество объектов пропорционально площади матрицы (плотность ~1 объект на 8-10 пикселей)
-      enlargedObjectNUM = max<uint8_t>(2, (uint16_t)(WIDTH * HEIGHT) / 10);
-      if (enlargedObjectNUM > enlargedOBJECT_MAX_COUNT) 
-        enlargedObjectNUM = enlargedOBJECT_MAX_COUNT;
+      uint16_t objectCount = ((uint16_t)WIDTH * (uint16_t)HEIGHT) / 10U;
+      if (objectCount < 2U) objectCount = 2U;
+      if (objectCount > enlargedOBJECT_MAX_COUNT) objectCount = enlargedOBJECT_MAX_COUNT;
+      enlargedObjectNUM = (uint8_t)objectCount;
     }
     else {
       enlargedObjectNUM = (modes[currentMode].Scale - 1U) / 99.0f * (enlargedOBJECT_MAX_COUNT - 1U) + 1U;
@@ -7293,6 +7288,7 @@ void pacifica_one_layer(CRGB *leds, const TProgmemRGBPalette16& p, uint16_t cist
   uint16_t waveangle = ioff;
   uint16_t wavescale_half = (wavescale / 2) + 20;
   for ( uint16_t i = 0; i < NUM_LEDS; i++) {
+    effectServiceTick();
     waveangle += 250;
     uint16_t s16 = sin16( waveangle ) + 32768;
     uint16_t cs = scale16( s16 , wavescale_half ) + wavescale_half;
@@ -7311,6 +7307,7 @@ void pacifica_add_whitecaps(CRGB *leds)
   uint8_t wave = beat8( 7 );
 
   for ( uint16_t i = 0; i < NUM_LEDS; i++) {
+    effectServiceTick();
     uint8_t threshold = scale8( sin8( wave), 20) + basethreshold;
     wave += 7;
     uint8_t l = leds[i].getAverageLight();
@@ -7326,6 +7323,7 @@ void pacifica_add_whitecaps(CRGB *leds)
 void pacifica_deepen_colors(CRGB *leds)
 {
   for ( uint16_t i = 0; i < NUM_LEDS; i++) {
+    effectServiceTick();
     leds[i].blue = scale8( leds[i].blue,  145);
     leds[i].green = scale8( leds[i].green, 200);
     leds[i] |= CRGB( 2, 5, 7);
@@ -8561,8 +8559,8 @@ void RadialWave() {
     }
 #endif
     loadingFlag = false;
-    for (int8_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR + (WIDTH % 2); x++) {
-      for (int8_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR + (HEIGHT % 2); y++) {
+    for (int16_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR + (WIDTH % 2); x++) {
+      for (int16_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR + (HEIGHT % 2); y++) {
         noise3d[0][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = (atan2(x, y) / PI) * 128 + 127; // thanks ldirko
         noise3d[1][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = hypot(x, y); // thanks Sutaburosu
       }

@@ -111,12 +111,18 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
         FastLED.setBrightness(getBrightnessForPrintTime());
         delay(1);
     }
+    else
+    {
+        getBrightnessForPrintTime();
+    }
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)        // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
     digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
     #endif
     
     #if USE_MP3_PLAYER
-    if (mp3_player_connect == 4){
+    bool timeVoiceAllowed = (mp3_player_connect == 4 && !dawnFlag && !sunsetFlag &&
+                             (day_night ? day_advert_sound_on : night_advert_sound_on));
+    if (timeVoiceAllowed) {
         first_entry = 1;
         advert_hour = true;
     }
@@ -126,12 +132,7 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
         parseUDP();
         delay (1);
         #if USE_MP3_PLAYER
-        if (day_night) {
-           if ((day_advert_sound_on && mp3_player_connect == 4 && !dawnFlag && !sunsetFlag) || advert_flag) play_time_ADVERT();
-        }
-        else {
-           if ((night_advert_sound_on && mp3_player_connect == 4 && !dawnFlag && !sunsetFlag) || advert_flag) play_time_ADVERT();
-        }
+        if (timeVoiceAllowed || advert_flag) play_time_ADVERT();
         #endif  // USE_MP3_PLAYER
         HTTP.handleClient();
         #if USE_BUTTON
@@ -143,14 +144,19 @@ void printTime(uint32_t thisTime, bool onDemand, bool ONflag) // периоди�
     #if USE_MP3_PLAYER
     while (advert_flag) {
         play_time_ADVERT();
+        HTTP.handleClient();
+        #if USE_BUTTON
+          buttonTick();
+        #endif
         esp_task_wdt_reset();
+        delay(1);
     }
-    //first_entry = 0;
+    first_entry = 0;
+    advert_hour = false;
     #endif  // USE_MP3_PLAYER
 
-    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)        // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-    digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-    digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)        // возвращаем MOSFET в состояние лампы/рассвета/заката
+    updateMosfetState();
     #endif
     if (ColorTextFon  & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))){
       FastLED.clear();
@@ -193,28 +199,58 @@ void printWeather(uint32_t thisTime, bool onDemand, bool ONflag)
   {
     lastWeatherPrinted = thisTime;
     char s[160];
-    int8_t t = (int8_t)round(currentTemp);
-    snprintf(s, sizeof(s), "<'%+d^C %s'>", (int)t, currentCondition.c_str());
+    int8_t t = (int8_t)constrain((int)round(currentTemp), -45, 45);
+    if (show_weather_desc && currentCondition.length()) {
+      snprintf(s, sizeof(s), "<'%+d^C %s'>", (int)t, currentCondition.c_str());
+    } else {
+      snprintf(s, sizeof(s), "<'%+d^C'>", (int)t);
+    }
     loadingFlag = true;
+
     if (!ONflag) {
       FastLED.setBrightness(getBrightnessForPrintTime());
       delay(1);
+    } else {
+      getBrightnessForPrintTime();
     }
+    #if USE_MP3_PLAYER
+    if (mp3_player_connect == 4 && !dawnFlag && !sunsetFlag) {
+      bool weatherVoiceAllowed = day_night ? day_weather_advert_sound_on : night_weather_advert_sound_on;
+      if (weatherVoiceAllowed) {
+        bool weatherDescAllowed = day_night ? day_weather_desc_advert_sound_on : night_weather_desc_advert_sound_on;
+        start_weather_temp_ADVERT(t, weatherDescAllowed);
+      }
+    }
+    #endif  // USE_MP3_PLAYER
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
       digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
     #endif
     while (!fillString(s, letterColor, false)) {
       parseUDP();
       delay(1);
+      #if USE_MP3_PLAYER
+        if (weather_advert_flag) play_weather_temp_ADVERT();
+      #endif  // USE_MP3_PLAYER
       HTTP.handleClient();
       #if USE_BUTTON
         buttonTick();
       #endif
       esp_task_wdt_reset();
     }
+
+    #if USE_MP3_PLAYER
+    while (weather_advert_flag) {
+      play_weather_temp_ADVERT();
+      HTTP.handleClient();
+      #if USE_BUTTON
+        buttonTick();
+      #endif
+      esp_task_wdt_reset();
+      delay(1);
+    }
+    #endif  // USE_MP3_PLAYER
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)
-      digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-      digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      updateMosfetState();
     #endif
 
     if (ColorTextFon & (!ONflag || (currentMode == EFF_COLOR && modes[currentMode].Scale < 3))) {
@@ -375,38 +411,6 @@ uint8_t getFont(uint8_t subasciiCode, uint8_t asciiCode, uint8_t row)           
   else if (asciiCode == 113 && subasciiCode == 0xD1)  // ё
   {
     return pgm_read_byte(&fontHEX[163][row]); 
-  }
-  else if (asciiCode == 100 && subasciiCode == 0xD0)  // Є
-  {
-    return pgm_read_byte(&fontHEX[160][row]);
-  }
-  else if (asciiCode == 116 && subasciiCode == 0xD1)  // є
-  {
-    return pgm_read_byte(&fontHEX[164][row]);
-  }
-  else if (asciiCode == 102 && subasciiCode == 0xD0)  // І
-  {
-    return pgm_read_byte(&fontHEX[161][row]);
-  }
-  else if (asciiCode == 118 && subasciiCode == 0xD1)  // і
-  {
-    return pgm_read_byte(&fontHEX[165][row]);
-  }
-  else if (asciiCode == 103 && subasciiCode == 0xD0)  // Ї
-  {
-    return pgm_read_byte(&fontHEX[162][row]);
-  }
-  else if (asciiCode == 119 && subasciiCode == 0xD1)  // ї
-  {
-    return pgm_read_byte(&fontHEX[166][row]);
-  }
-  else if (asciiCode == 117 && subasciiCode == 0xD2)  // Г
-  {
-    return pgm_read_byte(&fontHEX[167][row]);
-  }
-  else if (asciiCode == 118 && subasciiCode == 0xD2)  // г
-  {
-    return pgm_read_byte(&fontHEX[168][row]);
   }
 
   return 0;

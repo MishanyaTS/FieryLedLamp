@@ -150,10 +150,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       temp = (uint8_t)atoi(buff);
       currentMode = temp;
       updateSets();
-	  jsonWrite(configSetup, "eff_sel", temp);
-	  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-	  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-	  jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    jsonWrite(configSetup, "eff_sel", temp);
+    jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    jsonWrite(configSetup, "sc", modes[currentMode].Scale);
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -380,7 +380,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
       else {
         ONflag = false;
-		jsonWrite(configSetup, "Power", ONflag);
+    jsonWrite(configSetup, "Power", ONflag);
         if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
         save_file_changes = 7;
         //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
@@ -417,7 +417,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         tmp = strtok (NULL, ",");
         bool onflg = false;
         if (ONflag != atoi(tmp))   {
-	    ONflag = atoi( tmp);
+      ONflag = atoi( tmp);
         onflg = true;
         //changePower();   // Активация состояния ON/OFF
         }
@@ -426,17 +426,17 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
           if (atoi (tmp) < MODE_AMOUNT)   {
           currentMode = atoi (tmp);     
           tmp = strtok (NULL, ",");
-	      modes[currentMode].Brightness = atoi (tmp);
+        modes[currentMode].Brightness = atoi (tmp);
           tmp = strtok (NULL, ",");
-	      modes[currentMode].Speed = atoi (tmp);
+        modes[currentMode].Speed = atoi (tmp);
           tmp = strtok (NULL, ",");
-	      modes[currentMode].Scale = atoi (tmp);
+        modes[currentMode].Scale = atoi (tmp);
           #if USE_MP3_PLAYER
           if (valid == 8) {
           tmp = strtok (NULL, ",");
-	      eff_sound_on = atoi (tmp);
+        eff_sound_on = atoi (tmp);
           tmp = strtok (NULL, ",");
-	      eff_volume = atoi (tmp);
+        eff_volume = atoi (tmp);
           if (!dawnFlag && ONflag && eff_sound_on) {
             send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
             delay(mp3_delay);
@@ -497,9 +497,9 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
           #if USE_MP3_PLAYER
           if (valid == 8) {
           tmp = strtok (NULL, ",");
-	      eff_sound_on = atoi (tmp);
+        eff_sound_on = atoi (tmp);
           tmp = strtok (NULL, ",");
-	      eff_volume = atoi (tmp);
+        eff_volume = atoi (tmp);
           if (!dawnFlag && ONflag && eff_sound_on) {
             send_command(6,FEEDBACK,0,eff_volume); // Меняем громкость
             delay(mp3_delay);
@@ -570,7 +570,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
      inputBuffer[0] = '\0';
      //outputBuffer[0] = '\0';
      generateOutput = false;
-  	}
+    }
 #endif //USE_MULTIPLE_LAMPS_CONTROL
 
     else if (!strncmp_P(inputBuffer, PSTR("FAV_"), 4)) { // сокращаем GET и SET для ускорения регулярного цикла
@@ -640,11 +640,11 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
           FastLED.clear();
           delay(1);
           ONflag = true;
-		  jsonWrite(configSetup, "Power", ONflag);
-		  jsonWrite(configSetup, "eff_sel", currentMode);
-		  jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-		  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-		  jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+      jsonWrite(configSetup, "Power", ONflag);
+      jsonWrite(configSetup, "eff_sel", currentMode);
+      jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+      jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+      jsonWrite(configSetup, "sc", modes[currentMode].Scale);
           changePower();
         }
         else
@@ -687,9 +687,9 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
       uint8_t ALLbri = constrain(atoi(buff), 1, 255);
       for (uint8_t i = 0; i < MODE_AMOUNT; i++) {
-        modes[i].Brightness = ALLbri;		
+        modes[i].Brightness = ALLbri;   
       }
-	  jsonWrite(configSetup, "br", ALLbri);
+    jsonWrite(configSetup, "br", ALLbri);
       FastLED.setBrightness(ALLbri);
       loadingFlag = true;
       #if USE_MULTIPLE_LAMPS_CONTROL
@@ -733,27 +733,27 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
        else if (!strncmp_P(inputBuffer, PSTR("RND_C1"), 5)) // Включаем случайный выбор эффектов в цикле
        {
         FavoritesManager::rndCycle = 1;
-	    jsonWrite(configSetup, "rnd_cycle", 1);
+      jsonWrite(configSetup, "rnd_cycle", 1);
         saveConfig();
        }
        else if (!strncmp_P(inputBuffer, PSTR("RND_C0"), 5)) // Выключаем случайный выбор эффектов в цикле
        {
         FavoritesManager::rndCycle = 0;
-	    jsonWrite(configSetup, "rnd_cycle", 0);
+      jsonWrite(configSetup, "rnd_cycle", 0);
         saveConfig();
        }
        else if (!strncmp_P(inputBuffer, PSTR("RND_ON"), 6)) // включить выбор случайных настроек в режиме Цикл
        {
          random_on = 1U;
-		jsonWrite(configSetup, "random_on", (int)random_on);
-		saveConfig();  
+    jsonWrite(configSetup, "random_on", (int)random_on);
+    saveConfig();  
          showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду
        }
        else if (!strncmp_P(inputBuffer, PSTR("RND_OFF"), 7)) // отключить выбор случайных настроек в режиме Цикл
        {
          random_on = 0U;
-		jsonWrite(configSetup, "random_on", (int)random_on);
-		saveConfig();  
+    jsonWrite(configSetup, "random_on", (int)random_on);
+    saveConfig();  
          showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду
        }
     }
@@ -918,8 +918,8 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
       if (espMode == 1U)                                    // работает только в режиме WiFi клиента. интересно, зачем было запрещать обнаружение точки доступа?
       {
-		char lamp_name[LAMP_NAME.length()+1];
-		LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);
+    char lamp_name[LAMP_NAME.length()+1];
+    LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);
         sprintf_P(inputBuffer, PSTR("IP %u.%u.%u.%u:%u:%s"),
         WiFi.localIP()[0],
         WiFi.localIP()[1],
@@ -930,8 +930,8 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       }
       else
       {
-		char lamp_name[LAMP_NAME.length()+1];
-		LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);		
+    char lamp_name[LAMP_NAME.length()+1];
+    LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);    
         sprintf_P(inputBuffer, PSTR("IP %u.%u.%u.%u:%u:%s"),
         AP_STATIC_IP[0],
         AP_STATIC_IP[1],
@@ -1016,21 +1016,21 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     }
     
     else if (!strncmp_P(inputBuffer, PSTR("esp_mode=0"), 10)){  // Изменение режима на точку доступа
-		espMode = 0U;
-		jsonWrite(configSetup, "ESP_mode", (int)espMode);
-		saveConfig();  
-		showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду - смена рабочего режима лампы, перезагрузка
-		ESP.restart();
-	}
-	
-	else if (!strncmp_P(inputBuffer, PSTR("esp_mode=1"), 10)){  // Изменение режима для использования подключения к роутеру
-		espMode = 1U;
-		jsonWrite(configSetup, "ESP_mode", (int)espMode);
-		saveConfig();  
-		showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду - смена рабочего режима лампы, перезагрузка
-		ESP.restart();
-	}    
-	
+    espMode = 0U;
+    jsonWrite(configSetup, "ESP_mode", (int)espMode);
+    saveConfig();  
+    showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду - смена рабочего режима лампы, перезагрузка
+    ESP.restart();
+  }
+  
+  else if (!strncmp_P(inputBuffer, PSTR("esp_mode=1"), 10)){  // Изменение режима для использования подключения к роутеру
+    espMode = 1U;
+    jsonWrite(configSetup, "ESP_mode", (int)espMode);
+    saveConfig();  
+    showWarning(CRGB::Blue, 1000U, 500U);                    // мигание синим цветом 1 секунду - смена рабочего режима лампы, перезагрузка
+    ESP.restart();
+  }    
+  
     else if (!strncmp_P(inputBuffer, PSTR("TXT"), 3)){     // Принимаем текст для бегущей строки
         //String str = getValue(BUFF, '-', 1); // этим способом дефисы нельзя в бегущую строку передать. почему вообще разделитель - дефис?!
         String str = (BUFF.length() > 4) ? BUFF.substring(4, BUFF.length()) : "";
@@ -1112,6 +1112,15 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
+        if(FileCopy (F("/default/config_display.json"), F("/config_display.json"))) {
+            esp_task_wdt_reset();
+            showWarning(CRGB::Green, 500, 250U);
+        }
+        else {
+            esp_task_wdt_reset();
+            showWarning(CRGB::Red, 500, 250U);
+        }
+
         if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             esp_task_wdt_reset();
             showWarning(CRGB::Green, 500, 250U);
@@ -1187,9 +1196,9 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             modes[eff].Brightness = getValue(buff, ';', 1).toInt();
             modes[eff].Speed = getValue(buff, ';', 2).toInt();
             modes[eff].Scale = getValue(buff, ';', 3).toInt();
-			jsonWrite(configSetup, "br", modes[eff].Brightness);
-			jsonWrite(configSetup, "sp", modes[eff].Speed);
-			jsonWrite(configSetup, "sc", modes[eff].Scale);
+      jsonWrite(configSetup, "br", modes[eff].Brightness);
+      jsonWrite(configSetup, "sp", modes[eff].Speed);
+      jsonWrite(configSetup, "sc", modes[eff].Scale);
             if (eff == currentMode) {
               updateSets();
               #if USE_BLYNK_PLUS
@@ -1325,28 +1334,28 @@ void NEWsendCurrent(char *outputBuffer)
 void sendAlarms(char *outputBuffer)
 {
       char k[2];
-	  bool alarm_change = false;
-    	String configAlarm = readFile(F("config_alarm.json"), 512); 
-	#if GENERAL_DEBUG
-		LOG.println ("\nТекущие установки будильника");
-    	LOG.println(configAlarm);
-	#endif
+    bool alarm_change = false;
+      String configAlarm = readFile(F("config_alarm.json"), 512); 
+  #if GENERAL_DEBUG
+    LOG.println ("\nТекущие установки будильника");
+      LOG.println(configAlarm);
+  #endif
   strcpy_P(outputBuffer, PSTR("ALMS"));
 
   for (byte i = 0; i < 7; i++)
   {
-	itoa ((i+1), k, 10);
+  itoa ((i+1), k, 10);
     k[1] = 0;
     String a = "a" + String (k) ;
     String h = "h" + String (k) ;
     String m = "m" + String (k) ;
-	if (alarms[i].State != (jsonReadtoInt(configAlarm, a)) || alarms[i].Time != (jsonReadtoInt(configAlarm, h)) * 60U + (jsonReadtoInt(configAlarm, m)))
-	{
-		alarm_change = true;
-		jsonWrite(configAlarm, a, alarms[i].State);
-		jsonWrite(configAlarm, h, (alarms[i].Time / 60U));
-		jsonWrite(configAlarm, m, (alarms[i].Time % 60U));
-	}
+  if (alarms[i].State != (jsonReadtoInt(configAlarm, a)) || alarms[i].Time != (jsonReadtoInt(configAlarm, h)) * 60U + (jsonReadtoInt(configAlarm, m)))
+  {
+    alarm_change = true;
+    jsonWrite(configAlarm, a, alarms[i].State);
+    jsonWrite(configAlarm, h, (alarms[i].Time / 60U));
+    jsonWrite(configAlarm, m, (alarms[i].Time % 60U));
+  }
     sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, (uint8_t)alarms[i].State); 
   }
 
@@ -1356,22 +1365,22 @@ void sendAlarms(char *outputBuffer)
   }
   
   if (dawnMode != (jsonReadtoInt(configAlarm, "t")-1))
-	{
-	  alarm_change = true;
-	  jsonWrite(configAlarm, "t", (dawnMode + 1));
-	}
+  {
+    alarm_change = true;
+    jsonWrite(configAlarm, "t", (dawnMode + 1));
+  }
   sprintf_P(outputBuffer, PSTR("%s %u"), outputBuffer, dawnMode + 1);
   if (alarm_change)
-	{
-	  //writeFile("config_alarm.json", configAlarm );
+  {
+    //writeFile("config_alarm.json", configAlarm );
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 1);
 
-	#if GENERAL_DEBUG
-		LOG.println ("\nНовые установки будильника сохранены в файл");
-    	LOG.println(configAlarm);
-	#endif
-	}
+  #if GENERAL_DEBUG
+    LOG.println ("\nНовые установки будильника сохранены в файл");
+      LOG.println(configAlarm);
+  #endif
+  }
   DAWN_TIMEOUT = jsonReadtoInt(configAlarm, "after");
   DAWN_BRIGHT = jsonReadtoInt(configAlarm, "a_br");
 }

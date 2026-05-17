@@ -24,6 +24,7 @@ static const BackupConfigFileInfo BACKUP_CFG_FILES[] = {
   { "/config_ir.json",         "config_ir.json",         false },
   { "/config_alarm.json",      "config_alarm.json",      false },
   { "/config_cycle.json",      "config_cycle.json",      false },
+  { "/config_display.json",    "config_display.json",    false },
   { "/config_hardware.json",   "config_hardware.json",   false },
   { "/config_ip.json",         "config_ip.json",         false },
   { "/config_mqtt.json",       "config_mqtt.json",       false },

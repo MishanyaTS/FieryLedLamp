@@ -29,7 +29,12 @@ void buttonTick()
   }
 
   touch.tick();
-  uint8_t clickCount = touch.hasClicks() ? touch.getClicks() : 0U;
+
+  uint8_t clickCount = 0U;
+  if (!touch.isHold() && !startButtonHolding)
+  {
+    clickCount = touch.hasClicks() ? touch.getClicks() : 0U;
+  }
 
   // однократное нажатие
   if (clickCount == btn_click_power)
@@ -296,11 +301,8 @@ void buttonTick()
         delay(1);
         FastLED.show();
       }
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-      digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-      #endif
-      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-      digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+      #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // возвращаем MOSFET в состояние лампы/рассвета/заката
+      updateMosfetState();
       #endif
 
       loadingFlag = true;
@@ -326,11 +328,8 @@ void buttonTick()
       }
       loadingFlag = true;
     }
-    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-      digitalWrite(MOSFET_PIN, ONflag || (dawnFlag == 1 && !manualOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
-    #endif
-    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, соответственно состоянию вкл/выкл матрицы или будильника
-      digitalWrite(MOSFET_PIN, ONflag || (sunsetFlag == 1 && !manualsOff) ? MOSFET_LEVEL : !MOSFET_LEVEL);
+    #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // возвращаем MOSFET в состояние лампы/рассвета/заката
+      updateMosfetState();
     #endif
 }
 
@@ -589,6 +588,15 @@ if (touch.isStep()){
             esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
+          if(FileCopy (F("/default/config_display.json"), F("/config_display.json"))) {
+              esp_task_wdt_reset();
+              showWarning(CRGB::Green, 500, 250U);
+          }
+          else {
+              esp_task_wdt_reset();
+              showWarning(CRGB::Red, 500, 250U);
+          }
+
           if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             esp_task_wdt_reset();
               showWarning(CRGB::Green, 500, 250U);
@@ -735,6 +743,15 @@ if (touch.isStep()){
             esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
+          if(FileCopy (F("/default/config_display.json"), F("/config_display.json"))) {
+              esp_task_wdt_reset();
+              showWarning(CRGB::Green, 500, 250U);
+          }
+          else {
+              esp_task_wdt_reset();
+              showWarning(CRGB::Red, 500, 250U);
+          }
+
           if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
             esp_task_wdt_reset();
               showWarning(CRGB::Green, 500, 250U);

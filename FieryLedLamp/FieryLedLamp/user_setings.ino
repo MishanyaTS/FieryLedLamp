@@ -44,6 +44,7 @@ void User_setings ()  {
  HTTP.on("/summer_time", handle_summer_time);  //Переход на летнее время 1 - да , 0 - нет
  HTTP.on("/time_always", handle_time_always);     // Выводить или нет время бегущей строкой(если задано) на не активной лампе
  HTTP.on("/weather_always", handle_weather_always);     // Выводить или нет погоду бегущей строкой(если задано) на не активной лампе
+ HTTP.on("/show_weather_desc", handle_show_weather_desc); // Показывать описание погоды после температуры в бегущей строке
  HTTP.on("/timeZone", handle_time_zone);    // Установка смещения времени относительно GMT.
  HTTP.on("/alarm", handle_alarm);   // Установка будильника "рассвет"
  HTTP.on("/sunset", handle_sunset);   // Установка заката
@@ -78,14 +79,21 @@ void User_setings ()  {
  HTTP.on("/on_day_adv", handle_day_advert_on_sound);  // Включить/Выключить озвучивание времени днём
  HTTP.on("/on_night_adv", handle_night_advert_on_sound);  // Включить/Выключить озвучивание времени ночью
  HTTP.on("/on_alm_adv", handle_alarm_advert_sound_on);  // Включить/Выключить озвучивание времени будильником
- HTTP.on("/day_vol", handle_day_advert_volume);  // Громкость озвучивания времени днём
- HTTP.on("/night_vol", handle_night_advert_volume);  // Громкость озвучивания времени ночью
+ HTTP.on("/on_day_wadv", handle_day_weather_advert_on_sound);  // Включить/Выключить озвучивание температуры погоды днём
+ HTTP.on("/on_night_wadv", handle_night_weather_advert_on_sound);  // Включить/Выключить озвучивание температуры погоды ночью
+ HTTP.on("/on_alm_wadv", handle_alarm_weather_advert_sound_on);  // Включить/Выключить озвучивание температуры погоды будильником
+ HTTP.on("/on_day_wdesc", handle_day_weather_desc_advert_on_sound);  // Включить/Выключить озвучивание описания погоды днём
+ HTTP.on("/on_night_wdesc", handle_night_weather_desc_advert_on_sound);  // Включить/Выключить озвучивание описания погоды ночью
+ HTTP.on("/on_alm_wdesc", handle_alarm_weather_desc_advert_sound_on);  // Включить/Выключить озвучивание описания погоды будильником
+ HTTP.on("/day_vol", handle_day_advert_volume);  // Громкость озвучивания времени/погоды днём
+ HTTP.on("/night_vol", handle_night_advert_volume);  // Громкость озвучивания времени/погоды ночью
  HTTP.on("/sound_set", handle_sound_set);     // Выбор привязанных папок для озвучивания эффектов
  HTTP.on("/track_down", handle_folder_down);  // Предыдущая папка
  HTTP.on("/track_up", handle_folder_up);      // Следующая папка
  HTTP.on("/fold_sel", handle_folder_select);  // Выбор папки озвучивания на главной странице
  HTTP.on("/eq", handle_equalizer);  // Эквалайзер
  HTTP.on("/test", handle_test); // Настройка таймингов DF-Playera (озвучивание времени)
+ HTTP.on("/testw", handle_testw); // Настройка таймингов DF-Playera (озвучивание погоды)
  HTTP.on("/mp3_on", handle_mp3_on); // Включение/выключение MP3-плеера в настройках оборудования
  #endif
  HTTP.on("/tm1637_on", handle_tm1637_on); // Включение/выключение дисплея TM1637 в настройках оборудования
@@ -97,6 +105,7 @@ void User_setings ()  {
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
  HTTP.on("/color_order", handle_color_order);
  HTTP.on("/matrix_size", handle_matrix_size); // Размер матрицы
+ HTTP.on("/data_lines", handle_data_lines);   // Выбор 1/2 DATA-линий для матриц больше 1024 LED
  HTTP.on("/ssdp", handle_ssdp);  // Имя лампы
  HTTP.on("/res_to_def", handle_reset_to_default);  // Сброс всех настроек к "заводским"
  HTTP.on("/toe", handle_runing_text_over_effects );  // Выводить бегущую строку поверх эффектов
@@ -294,9 +303,11 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
     HTTP.send(400, "text/plain", "Invalid value (3-300)");
     return;
   }
-  jsonWrite(configSetup, "clock_time", clockVal);
-  jsonWrite(configSetup, "weather_time", weatherVal);
-  saveConfig();
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "clock_time", clockVal);
+  jsonWrite(configDisplay, "weather_time", weatherVal);
+  writeFile(F("config_display.json"), configDisplay);
   CLOCK_SHOW_INTERVAL   = (uint32_t)clockVal * 1000UL;
   WEATHER_SHOW_INTERVAL = (uint32_t)weatherVal * 1000UL;
   displaySwitchTimer = millis();   // сброс таймера
@@ -594,61 +605,68 @@ void handle_save_btn_clicks() {
 
 #if USE_TFT
 void handle_tft_clock_color() {
-  jsonWrite(configSetup, "tft_clock_color", HTTP.arg("tft_clock_color").toInt());
-  tft_clock_color = jsonReadtoInt(configSetup, "tft_clock_color");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_clock_color", HTTP.arg("tft_clock_color").toInt());
+  tft_clock_color = jsonReadtoInt(configDisplay, "tft_clock_color");
+  writeFile(F("config_display.json"), configDisplay);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
 
 void handle_tft_weather_color() {
-  jsonWrite(configSetup, "tft_weather_color", HTTP.arg("tft_weather_color").toInt());
-  tft_weather_color = jsonReadtoInt(configSetup, "tft_weather_color");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_weather_color", HTTP.arg("tft_weather_color").toInt());
+  tft_weather_color = jsonReadtoInt(configDisplay, "tft_weather_color");
+  writeFile(F("config_display.json"), configDisplay);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
 
 void handle_tft_ticker_on() {
-  jsonWrite(configSetup, "tft_ticker_on", HTTP.arg("tft_ticker_on").toInt());
-  tft_ticker_on = jsonReadtoInt(configSetup, "tft_ticker_on");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_ticker_on", HTTP.arg("tft_ticker_on").toInt());
+  tft_ticker_on = jsonReadtoInt(configDisplay, "tft_ticker_on");
+  writeFile(F("config_display.json"), configDisplay);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
 
 void handle_tft_ticker_color() {
-  jsonWrite(configSetup, "tft_ticker_color", HTTP.arg("tft_ticker_color").toInt());
-  tft_ticker_color = jsonReadtoInt(configSetup, "tft_ticker_color");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_ticker_color", HTTP.arg("tft_ticker_color").toInt());
+  tft_ticker_color = jsonReadtoInt(configDisplay, "tft_ticker_color");
+  writeFile(F("config_display.json"), configDisplay);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
 
 void handle_tft_ticker_speed() {
-  jsonWrite(configSetup, "tft_ticker_speed", HTTP.arg("tft_ticker_speed").toInt());
-  tft_ticker_speed = jsonReadtoInt(configSetup, "tft_ticker_speed");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
-  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}")); 
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_ticker_speed", HTTP.arg("tft_ticker_speed").toInt());
+  tft_ticker_speed = jsonReadtoInt(configDisplay, "tft_ticker_speed");
+  writeFile(F("config_display.json"), configDisplay);
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
 void handle_tft_ticker_period() {
-  jsonWrite(configSetup, "tft_ticker_period", HTTP.arg("tft_ticker_period").toInt());
-  tft_ticker_period = jsonReadtoInt(configSetup, "tft_ticker_period");
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_ticker_period", HTTP.arg("tft_ticker_period").toInt());
+  tft_ticker_period = jsonReadtoInt(configDisplay, "tft_ticker_period");
+  writeFile(F("config_display.json"), configDisplay);
   HTTP.send(200, F("text/plain"), F("OK"));
 }
   
 void handle_tft_ticker_text() {
   String s = HTTP.arg("tft_ticker_text");
   if (s.length() > 120) s.remove(120);
-  jsonWrite(configSetup, "tft_ticker_text", s);
-  (jsonRead(configSetup, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configSetup, "tft_ticker_text")).length() + 1);
-  timeout_save_file_changes = millis();
-  bitSet(save_file_changes, 0);
-  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}")); 
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  jsonWrite(configDisplay, "tft_ticker_text", s);
+  s.toCharArray(TFTTickerText, s.length() + 1);
+  writeFile(F("config_display.json"), configDisplay);
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 #endif
 
@@ -674,6 +692,9 @@ void handle_button_type() {
       touch.setDebounce(BUTTON_SET_DEBOUNCE_MECHANICAL);
     }
     touch.setDirection(NORM_OPEN);
+    touch.setTimeout(BUTTON_CLICK_TIMEOUT);
+    touch.setClickTimeout(BUTTON_CLICK_TIMEOUT);
+    touch.setStepTimeout(BUTTON_STEP_TIMEOUT);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
@@ -1111,6 +1132,16 @@ void handle_time_always() {
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("text/plain"), F("OK"));
  }
+
+#if USE_WEATHER
+void handle_show_weather_desc() {
+    show_weather_desc = HTTP.arg("show_weather_desc").toInt();
+    jsonWrite(configSetup, "show_weather_desc", show_weather_desc);
+    timeout_save_file_changes = millis();
+    bitSet(save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+#endif
  
 void handle_time_zone() {     // Установка параметров времянной зоны 
     #ifdef USE_NTP
@@ -1794,7 +1825,7 @@ void handle_on_sound ()   {
 void handle_volume ()   {
     eff_volume = HTTP.arg("vol").toInt();
     jsonWrite(configSetup, "vol", eff_volume);
-    if (mp3_player_connect == 4 && !dawnflag_sound && !sunsetflag_sound && !advert_flag) {
+    if (mp3_player_connect == 4 && !dawnflag_sound && !sunsetflag_sound && !advert_flag && !weather_advert_flag) {
     send_command(6, FEEDBACK, 0, eff_volume);
     }
     timeout_save_file_changes = millis();
@@ -1813,35 +1844,35 @@ void handle_volume ()   {
 
 void handle_alarm_on_sound ()   {
     alarm_sound_on = HTTP.arg("on_alm_snd").toInt();
-    jsonWrite(configSetup, "on_alm_snd", alarm_sound_on);
-    timeout_save_file_changes = millis();
-    bitSet (save_file_changes, 0);
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "on_alm_snd", alarm_sound_on);
+    writeFile(F("config_alarm.json"), configAlarm);
     HTTP.send(200, F("text/plain"), F("OK")); 
 }
 
 void handle_sunset_on_sound ()   {
     sunset_sound_on = HTTP.arg("on_sun_snd").toInt();
-    jsonWrite(configSetup, "on_sun_snd", sunset_sound_on);
-    timeout_save_file_changes = millis();
-    bitSet (save_file_changes, 0);
+    String configSunset = readFile(F("config_sunset.json"), 512);
+    jsonWrite(configSunset, "on_sun_snd", sunset_sound_on);
+    writeFile(F("config_sunset.json"), configSunset);
     HTTP.send(200, F("text/plain"), F("OK")); 
 }
 
 void handle_alarm_volume ()   {
     alarm_volume = HTTP.arg("alm_vol").toInt();
-    jsonWrite(configSetup, "alm_vol", alarm_volume);
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "alm_vol", alarm_volume);
+    writeFile(F("config_alarm.json"), configAlarm);
     if (dawnflag_sound && alarm_sound_on) send_command(6,FEEDBACK,0,alarm_volume); //Громкость
-    timeout_save_file_changes = millis();
-    bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
 void handle_sunset_volume ()   {
     sunset_volume = HTTP.arg("sun_vol").toInt();
-    jsonWrite(configSetup, "sun_vol", sunset_volume);
+    String configSunset = readFile(F("config_sunset.json"), 512);
+    jsonWrite(configSunset, "sun_vol", sunset_volume);
+    writeFile(F("config_sunset.json"), configSunset);
     if (sunsetflag_sound && sunset_sound_on) send_command(6,FEEDBACK,0,sunset_volume); //Громкость
-    timeout_save_file_changes = millis();
-    bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
@@ -1863,16 +1894,64 @@ void handle_night_advert_on_sound ()   {
 
 void handle_alarm_advert_sound_on()   {
     alarm_advert_sound_on = HTTP.arg("on_alm_adv").toInt();
-    jsonWrite(configSetup, "on_alm_adv", alarm_advert_sound_on);
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "on_alm_adv", alarm_advert_sound_on);
+    writeFile(F("config_alarm.json"), configAlarm);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_day_weather_advert_on_sound ()   {
+    day_weather_advert_sound_on = HTTP.arg("on_day_wadv").toInt();
+    jsonWrite(configSetup, "on_day_wadv", day_weather_advert_sound_on);
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_night_weather_advert_on_sound ()   {
+    night_weather_advert_sound_on = HTTP.arg("on_night_wadv").toInt();
+    jsonWrite(configSetup, "on_night_wadv", night_weather_advert_sound_on);
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_alarm_weather_advert_sound_on()   {
+    alarm_weather_advert_sound_on = HTTP.arg("on_alm_wadv").toInt();
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "on_alm_wadv", alarm_weather_advert_sound_on);
+    writeFile(F("config_alarm.json"), configAlarm);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_day_weather_desc_advert_on_sound ()   {
+    day_weather_desc_advert_sound_on = HTTP.arg("on_day_wdesc").toInt();
+    jsonWrite(configSetup, "on_day_wdesc", day_weather_desc_advert_sound_on);
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_night_weather_desc_advert_on_sound ()   {
+    night_weather_desc_advert_sound_on = HTTP.arg("on_night_wdesc").toInt();
+    jsonWrite(configSetup, "on_night_wdesc", night_weather_desc_advert_sound_on);
+    timeout_save_file_changes = millis();
+    bitSet (save_file_changes, 0);
+    HTTP.send(200, F("text/plain"), F("OK"));
+}
+
+void handle_alarm_weather_desc_advert_sound_on()   {
+    alarm_weather_desc_advert_sound_on = HTTP.arg("on_alm_wdesc").toInt();
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "on_alm_wdesc", alarm_weather_desc_advert_sound_on);
+    writeFile(F("config_alarm.json"), configAlarm);
     HTTP.send(200, F("text/plain"), F("OK"));
 }
 
 void handle_day_advert_volume ()   {
     day_advert_volume = HTTP.arg("day_vol").toInt();
     jsonWrite(configSetup, "day_vol", day_advert_volume);
-    if (advert_flag && day_advert_sound_on) send_command(6,FEEDBACK,0,day_advert_volume); //Громкость
+    if ((advert_flag && day_advert_sound_on) || (weather_advert_flag && day_weather_advert_sound_on)) send_command(6,FEEDBACK,0,day_advert_volume); //Громкость времени/погоды
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1881,7 +1960,7 @@ void handle_day_advert_volume ()   {
 void handle_night_advert_volume ()   {
     night_advert_volume = HTTP.arg("night_vol").toInt();
     jsonWrite(configSetup, "night_vol", night_advert_volume);
-    if (advert_flag && night_advert_sound_on) send_command(6,FEEDBACK,0,night_advert_volume); //Громкость
+    if ((advert_flag && night_advert_sound_on) || (weather_advert_flag && night_weather_advert_sound_on)) send_command(6,FEEDBACK,0,night_advert_volume); //Громкость времени/погоды
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1990,7 +2069,7 @@ void handle_folder_select()   {
 void handle_equalizer ()   {
     Equalizer = HTTP.arg("eq").toInt();
     jsonWrite(configSetup, "eq", Equalizer);
-    send_command(0x07,FEEDBACK,0,Equalizer);  // Эквалайзер
+    if (mp3_player_connect == 4) send_command(0x07,FEEDBACK,0,Equalizer);  // Эквалайзер
     timeout_save_file_changes = millis();
     bitSet (save_file_changes, 0);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1998,9 +2077,9 @@ void handle_equalizer ()   {
 
 void handle_alarm_fold_sel ()   {
     AlarmFolder = HTTP.arg("alm_fold").toInt();
-    jsonWrite(configSetup, "alm_fold", AlarmFolder);
-    bitSet (save_file_changes, 0);
-    timeout_save_file_changes = millis();
+    String configAlarm = readFile(F("config_alarm.json"), 512);
+    jsonWrite(configAlarm, "alm_fold", AlarmFolder);
+    writeFile(F("config_alarm.json"), configAlarm);
     if (alarm_sound_flag) {
         mp3_folder = AlarmFolder;  // Папка будильника
         //mp3_folder_change= 1;
@@ -2012,9 +2091,9 @@ void handle_alarm_fold_sel ()   {
 
 void handle_sunset_fold_sel ()   {
     SunsetFolder = HTTP.arg("sun_fold").toInt();
-    jsonWrite(configSetup, "sun_fold", SunsetFolder);
-    bitSet (save_file_changes, 0);
-    timeout_save_file_changes = millis();
+    String configSunset = readFile(F("config_sunset.json"), 512);
+    jsonWrite(configSunset, "sun_fold", SunsetFolder);
+    writeFile(F("config_sunset.json"), configSunset);
     if (sunset_sound_flag) {
         mp3_folder = SunsetFolder;  // Папка заката
         //mp3_folder_change= 1;
@@ -2049,6 +2128,29 @@ void handle_test ()   {
     #endif*/
 }
 
+void handle_testw ()   {
+    uint8_t tmp;
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    tmp = HTTP.arg("tim_w").toInt();
+    ADVERT_TIMER_W = 100 * tmp;
+    jsonWrite(configHardware, "tim_w", tmp);
+    String timWdescArg = HTTP.arg("tim_wdesc");
+    tmp = timWdescArg.length() ? timWdescArg.toInt() : HTTP.arg("tim_w").toInt();
+    ADVERT_TIMER_WDESC = 100 * tmp;
+    jsonWrite(configHardware, "tim_wdesc", tmp);
+    writeFile(F("config_hardware.json"), configHardware );
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+    printWeather(thisTime, true, ONflag);
+    /*#if GENERAL_DEBUG
+     LOG.print (F("ADVERT_TIMER_W = "));
+     LOG.println (ADVERT_TIMER_W);
+     LOG.print (F("ADVERT_TIMER_WDESC = "));
+     LOG.println (ADVERT_TIMER_WDESC);
+     LOG.print (F("mp3_delay = "));
+     LOG.println (mp3_delay);
+    #endif*/
+}
+
 void handle_mp3_on ()   {
     String configHardware = readFile(F("config_hardware.json"), 2048);
     mp3_player_on = HTTP.arg("mp3_on").toInt();
@@ -2060,12 +2162,8 @@ void handle_mp3_on ()   {
         send_command(0x16,FEEDBACK,0,0);
         delay(mp3_delay);
       }
+      mp3_clear_runtime_flags();
       mp3_player_connect = 0;
-      mp3_stop = true;
-      pause_on = true;
-      alarm_sound_flag = false;
-      sunset_sound_flag = false;
-      advert_flag = false;
     }
     else if (mp3_player_connect == 0) {
       mp3_timer = millis();
@@ -2089,6 +2187,7 @@ void handle_tm1637_on ()   {
     } else {
       display.setBrightness(DispBrightness);
       display.displayByte(_dash, _dash, _dash, _dash);
+      LastEffect = 255;
       tmr_clock = millis();
     }
 #endif
@@ -2204,6 +2303,17 @@ void handle_matrix_size ()   {
     ESP.restart();
 }
 
+void handle_data_lines() {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    uint8_t newDataLines = HTTP.arg("data_lines").toInt();
+    ledDataLines = (newDataLines == 1U) ? 1U : 2U;
+    jsonWrite(configHardware, "data_lines", ledDataLines);
+    writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\", \"message\": \"Настройка DATA-линий сохранена. Перезагрузка...\"}"));
+    delay(100);
+    ESP.restart();
+}
+
 void handle_reset_to_default ()   {
     LOG.println("\n*** Reset to Default ***");
     showWarning(CRGB::Red, 500, 250U);
@@ -2250,6 +2360,15 @@ void handle_reset_to_default ()   {
             esp_task_wdt_reset();
             showWarning(CRGB::Red, 500, 250U);
         }
+    if(FileCopy (F("/default/config_display.json"), F("/config_display.json"))) {
+        esp_task_wdt_reset();
+        showWarning(CRGB::Green, 500, 250U);
+    }
+    else {
+        esp_task_wdt_reset();
+        showWarning(CRGB::Red, 500, 250U);
+    }
+
     if(FileCopy (F("/default/config_hardware.json"), F("/config_hardware.json"))) {
         esp_task_wdt_reset();
         showWarning(CRGB::Green, 500, 250U);

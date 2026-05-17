@@ -1,20 +1,62 @@
 // служебные функции
 
+uint16_t matrixFrameDelay(uint16_t baseDelay)
+{
+  if (baseDelay == 0U) return 0U;
+
+  const uint16_t ledsCount = NUM_LEDS;
+
+  if (ledsCount <= 1024U) return baseDelay;
+  if (ledsCount <= 1536U) { uint16_t d = (baseDelay * 3U) / 4U; return d ? d : 1U; }
+  if (ledsCount <= 2048U) { uint16_t d = baseDelay / 2U; return d ? d : 1U; }
+  if (ledsCount <= 3072U) { uint16_t d = baseDelay / 3U; return d ? d : 1U; }
+  { uint16_t d = baseDelay / 4U; return d ? d : 1U; }
+}
+
+uint16_t dynamicFrameDelay()
+{
+  uint16_t baseDelay = 256U - modes[currentMode].Speed;
+  return matrixFrameDelay(baseDelay);
+}
+
+void effectServiceTick()
+{
+  static uint16_t serviceCounter = 0;
+
+  if ((++serviceCounter & 0x7FU) != 0U) return;
+
+  #if USE_BUTTON
+    if (buttonEnabled) touch.tick();
+  #endif
+
+  yield();
+
+  #ifdef ESP32
+    esp_task_wdt_reset();
+  #endif
+}
+
 // залить все
 void fillAll(CRGB color)
 {
-  for (int16_t i = 0; i < NUM_LEDS; i++)
+  for (uint16_t i = 0; i < NUM_LEDS; i++)
+  {
     leds[i] = color;
+    effectServiceTick();
+  }
 }
 
 // функция отрисовки точки по координатам X Y
-void drawPixelXY(int8_t x, int8_t y, CRGB color)
+void drawPixelXY(int16_t x, int16_t y, CRGB color)
 {
-  if (x < 0 || x > (WIDTH - 1) || y < 0 || y > (HEIGHT - 1)) return;
-  uint32_t thisPixel = XY((uint8_t)x, (uint8_t)y) * SEGMENTS;
+  if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
+
+  uint32_t thisPixel = (uint32_t)XY((uint8_t)x, (uint8_t)y) * SEGMENTS;
+  if (thisPixel >= NUM_LEDS) return;
+
   for (uint8_t i = 0; i < SEGMENTS; i++)
   {
-    leds[thisPixel + i] = color;
+    if ((thisPixel + i) < NUM_LEDS) leds[thisPixel + i] = color;
   }
 }
 
@@ -27,9 +69,10 @@ uint32_t getPixColor(uint32_t thisSegm)
 }
 
 // функция получения цвета пикселя в матрице по его координатам
-uint32_t getPixColorXY(uint8_t x, uint8_t y)
+uint32_t getPixColorXY(int16_t x, int16_t y)
 {
-  return getPixColor(XY(x, y));
+  if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return 0;
+  return getPixColor(XY((uint8_t)x, (uint8_t)y));
 }
 
 // ************* НАСТРОЙКА МАТРИЦЫ *****
@@ -88,6 +131,8 @@ uint32_t getPixColorXY(uint8_t x, uint8_t y)
 // библиотека FastLED тоже использует эту функцию
 uint16_t XY(uint8_t x, uint8_t y)
 {
+  effectServiceTick();
+
  uint8_t THIS_X;
  uint8_t THIS_Y;
  uint8_t _WIDTH = WIDTH;
@@ -217,9 +262,10 @@ float sqrt3(const float x)
 }
 
 uint8_t SpeedFactor(uint8_t spd) {
-  uint8_t result = spd * NUM_LEDS / 1024.0;
+  uint16_t result = ((uint32_t)spd * NUM_LEDS) / 1024UL;
+  if (result > 255U) result = 255U;
 #if GENERAL_DEBUG
-  LOG.printf_P(PSTR("Speed Factor • %03d\n\r"), result);
+  LOG.printf_P(PSTR("Speed Factor • %03d\n\r"), (uint8_t)result);
 #endif
-  return result;
+  return (uint8_t)result;
 }

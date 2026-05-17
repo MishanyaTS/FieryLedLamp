@@ -109,18 +109,30 @@ void  espModeState(uint8_t color) {
 //---------------------------------------
 // Global Function
 //---------------------------------------
-void drawRec(uint8_t startX, uint8_t startY, uint8_t endX, uint8_t endY, uint32_t color) {
-  for (uint8_t y = startY; y < endY; y++) {
-    for (uint8_t x = startX; x < endX; x++) {
+void drawRec(int16_t startX, int16_t startY, int16_t endX, int16_t endY, uint32_t color) {
+  int16_t xs = ((startX < 0) ? 0 : startX);
+  int16_t ys = ((startY < 0) ? 0 : startY);
+  int16_t xe = ((endX > WIDTH) ? WIDTH : endX);
+  int16_t ye = ((endY > HEIGHT) ? HEIGHT : endY);
+  if (xe <= xs || ye <= ys) return;
+
+  for (int16_t y = ys; y < ye; y++) {
+    for (int16_t x = xs; x < xe; x++) {
       drawPixelXY(x, y, color);
     }
   }
 }
 
 //---------------------------------------
-void drawRecCHSV(uint8_t startX, uint8_t startY, uint8_t endX, uint8_t endY, CHSV color) {
-  for (uint8_t y = startY; y < endY; y++) {
-    for (uint8_t x = startX; x < endX; x++) {
+void drawRecCHSV(int16_t startX, int16_t startY, int16_t endX, int16_t endY, CHSV color) {
+  int16_t xs = ((startX < 0) ? 0 : startX);
+  int16_t ys = ((startY < 0) ? 0 : startY);
+  int16_t xe = ((endX > WIDTH) ? WIDTH : endX);
+  int16_t ye = ((endY > HEIGHT) ? HEIGHT : endY);
+  if (xe <= xs || ye <= ys) return;
+
+  for (int16_t y = ys; y < ye; y++) {
+    for (int16_t x = xs; x < xe; x++) {
       drawPixelXY(x, y, color);
     }
   }
@@ -143,32 +155,23 @@ uint8_t validMinMax(float val, uint8_t minV, uint32_t maxV) {
 // альтернативный градиент для ламп собраных из лент с вертикальной компоновкой
 // gradientHorizontal | gradientVertical менее производительный но работает на всех видах ламп
 //--------------------------------------
-void gradientHorizontal(uint8_t startX, uint8_t startY, uint8_t endX, uint8_t endY, uint8_t start_color, uint8_t end_color, uint8_t start_br, uint8_t end_br, uint8_t saturate) {
-  float step_color = 0;
-  float step_br = 0;
-  if (startX == endX) {
-    endX++;
-  }
-  if (startY == endY) {
-    endY++;
-  }
-  step_color = (end_color - start_color) / abs(startX - endX);
-  if (start_color >  end_color) {
-    step_color -= 1.2;
-  } else {
-    step_color += 1.2;
-  }
+void gradientHorizontal(int16_t startX, int16_t startY, int16_t endX, int16_t endY, uint8_t start_color, uint8_t end_color, uint8_t start_br, uint8_t end_br, uint8_t saturate) {
+  if (startX == endX) endX++;
+  if (startY == endY) endY++;
 
-  step_br = (end_br - start_br) / abs(startX - endX);
-  if (start_br >  end_color) {
-    step_br -= 1.2;
-  } else {
-    step_br += 1.2;
-  }
+  const int16_t xs = ((startX < 0) ? 0 : startX);
+  const int16_t ys = ((startY < 0) ? 0 : startY);
+  const int16_t xe = ((endX > WIDTH) ? WIDTH : endX);
+  const int16_t ye = ((endY > HEIGHT) ? HEIGHT : endY);
+  if (xe <= xs || ye <= ys) return;
 
-  // LOG.printf_P(PSTR( "\n step_color: %f | step_br: %f \n\n\r"), step_color, step_br);
-  for (uint8_t x = startX; x < endX; x++) {
-    for (uint8_t y = startY; y < endY; y++) {
+  float step_color = (float)((int16_t)end_color - (int16_t)start_color) / ((abs(endX - startX) < 1) ? 1 : abs(endX - startX));
+  float step_br    = (float)((int16_t)end_br    - (int16_t)start_br)    / ((abs(endX - startX) < 1) ? 1 : abs(endX - startX));
+  step_color += (start_color > end_color) ? -1.2f : 1.2f;
+  step_br    += (start_br    > end_br)    ? -1.2f : 1.2f;
+
+  for (int16_t x = xs; x < xe; x++) {
+    for (int16_t y = ys; y < ye; y++) {
       CHSV thisColor = CHSV((uint8_t) validMinMax((start_color + (x - startX) * step_color), 1, 254), saturate,
                             (uint8_t) validMinMax((start_br + (x - startX) * step_br), 0, 255) );
       drawPixelXY(x, y, thisColor);
@@ -177,33 +180,25 @@ void gradientHorizontal(uint8_t startX, uint8_t startY, uint8_t endX, uint8_t en
 }
 
 //--------------------------------------
-void gradientVertical(uint8_t startX, uint8_t startY, uint8_t endX, uint8_t endY, uint8_t start_color, uint8_t end_color, uint8_t start_br, uint8_t end_br, uint8_t saturate) {
-  float step_color = 0;
-  float step_br = 0;
-  if (startX == endX) {
-    endX++;
-  }
-  if (startY == endY) {
-    endY++;
-  }
-  step_color = (end_color - start_color) / abs(startY - endY);
+void gradientVertical(int16_t startX, int16_t startY, int16_t endX, int16_t endY, uint8_t start_color, uint8_t end_color, uint8_t start_br, uint8_t end_br, uint8_t saturate) {
+  if (startX == endX) endX++;
+  if (startY == endY) endY++;
 
-  if (start_color >  end_color) {
-    step_color -= 1.2;
-  } else {
-    step_color += 1.2;
-  }
+  const int16_t xs = ((startX < 0) ? 0 : startX);
+  const int16_t ys = ((startY < 0) ? 0 : startY);
+  const int16_t xe = ((endX > WIDTH) ? WIDTH : endX);
+  const int16_t ye = ((endY > HEIGHT) ? HEIGHT : endY);
+  if (xe <= xs || ye <= ys) return;
 
-  step_br = (end_br - start_br) / abs(startY - endY);
-  if (start_br >  end_color) {
-    step_br -= 1.2;
-  } else {
-    step_br += 1.2;
-  }
-  for (uint8_t y = startY; y < endY; y++) {
+  float step_color = (float)((int16_t)end_color - (int16_t)start_color) / ((abs(endY - startY) < 1) ? 1 : abs(endY - startY));
+  float step_br    = (float)((int16_t)end_br    - (int16_t)start_br)    / ((abs(endY - startY) < 1) ? 1 : abs(endY - startY));
+  step_color += (start_color > end_color) ? -1.2f : 1.2f;
+  step_br    += (start_br    > end_br)    ? -1.2f : 1.2f;
+
+  for (int16_t y = ys; y < ye; y++) {
     CHSV thisColor = CHSV( (uint8_t) validMinMax((start_color + (y - startY) * step_color), 0, 255), saturate,
                            (uint8_t) validMinMax((start_br + (y - startY) * step_br), 0, 255) );
-    for (uint8_t x = startX; x < endX; x++) {
+    for (int16_t x = xs; x < xe; x++) {
       drawPixelXY(x, y, thisColor);
     }
   }
@@ -1365,7 +1360,7 @@ void FeatherCandleRoutine() {
   uint8_t drawW = (uint8_t)(w * scale + 0.5f);
   uint8_t drawH = (uint8_t)(h * scale + 0.5f);
 
-  int8_t offsetX = (WIDTH - drawW) / 2;
+  int8_t offsetX = (WIDTH - drawW) / 2 + 2;
   int8_t offsetY = (HEIGHT - drawH) / 2;
   if (offsetX < 0) offsetX = 0;
   if (offsetY < 0) offsetY = 0;
@@ -2421,8 +2416,8 @@ void Octopus() {
     }
 #endif
     loadingFlag = false;
-    for (int8_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR + (WIDTH % 2); x++) {
-      for (int8_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR + (HEIGHT % 2); y++) {
+    for (int16_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR + (WIDTH % 2); x++) {
+      for (int16_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR + (HEIGHT % 2); y++) {
         noise3d[0][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = (atan2(x, y) / PI) * 128 + 127; // thanks ldirko
         noise3d[1][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = hypot(x, y); // thanks Sutaburosu
       }
@@ -2462,8 +2457,8 @@ void FlowerRuta() {
 #endif
     loadingFlag = false;
     FastLED.clear();
-    for (int8_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR; x++) {
-      for (int8_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR; y++) {
+    for (int16_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR; x++) {
+      for (int16_t y = -CENTER_Y_MAJOR; y < CENTER_Y_MAJOR; y++) {
         noise3d[0][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = (atan2(x, y) / PI) * 128 + 127; // thanks ldirko
         noise3d[1][x + CENTER_X_MAJOR][y + CENTER_Y_MAJOR] = hypot(x, y);                    // thanks Sutaburosu
       }
@@ -2665,8 +2660,8 @@ void Tornado() {
     loadingFlag = 0;
 
     //FastLED.clear();
-    for (int8_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR; x++) {
-      for (int8_t y = -OFFSET; y < H; y++) {
+    for (int16_t x = -CENTER_X_MAJOR; x < CENTER_X_MAJOR; x++) {
+      for (int16_t y = -OFFSET; y < H; y++) {
         noise3d[0][x + CENTER_X_MAJOR][y + OFFSET] = 128 * (atan2(y, x) / PI);
         noise3d[1][x + CENTER_X_MAJOR][y + OFFSET] = hypot(x, y);                    // thanks Sutaburosu
       }
