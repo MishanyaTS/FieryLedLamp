@@ -61,13 +61,13 @@
 "spt":200,
 "ctf":0,
 "s_IP":0,
-"city":"",
+"weather_city":"|",
 "openweather_key":"",
-"yandex_geo":"",
 "prefer_yandex":1,
 "blynk_token":"",
 "use_blynk":0,
 "on_day_wdesc":1,
 "on_night_wdesc":0,
-"show_weather_desc":1
+"show_weather_desc":1,
+"weather_source":0
 }

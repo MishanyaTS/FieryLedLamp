@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION      " v7.3"
+#define VERSION      " v7.4"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -65,17 +65,26 @@
 #define WARNING_BRI_NIGHT    (5U)                           // Яркость вспышки предупреждения ночью
 
 // =============  МАТРИЦА  =======================================================================
-#define CURRENT_LIMIT         (4000U)                       // Лимит потребления матрицы по току в миллиамперах, автоматически управляет яркостью (пожалей свой блок питания!) 0 – выключить лимит
+#define WHITE_COLOR_CURRENT_LIMIT (4000U)                   // Лимит тока для эффекта "Белый свет" в мА. 0 – выключить лимит
+#define CURRENT_LIMIT         (4000U)                       // Лимит тока для остальных эффектов. 0 – выключить лимит
 #define WIDTH_DEFAULT         (16U)                         // Ширина матрицы по умолчанию
 #define HEIGHT_DEFAULT        (16U)                         // Высота матрицы по умолчанию
 #define WIDTH_MIN             (8U)                          // Минимальная ширина
 #define HEIGHT_MIN            (8U)                          // Минимальная высота
 #define WIDTH_MAX             (64U)                         // Максимальная ширина
 #define HEIGHT_MAX            (64U)                         // Максимальная высота
+#define MULTI_MATRIX 1                                      // Поддержка использования нескольких последовательно соединённых матриц: 0 - одна матрица, 1 - несколько матриц
+#define SEG_MATRIX_W 1                                      // Количество матриц по горизонтали
+#define SEG_MATRIX_H 1                                      // Количество матриц по вертикали
 #define NUM_LEDS_MAX          (uint16_t)(WIDTH_MAX * HEIGHT_MAX)
 #define MAX_NOISE_DIMENSION   ((WIDTH_MAX > HEIGHT_MAX) ? WIDTH_MAX : HEIGHT_MAX)
 extern uint8_t matrixWidth;
 extern uint8_t matrixHeight;
+extern uint8_t segWidth;
+extern uint8_t segHeight;
+extern uint8_t segMatrixW;
+extern uint8_t segMatrixH;
+extern bool panelFlip;
 #define WIDTH                 (matrixWidth)
 #define HEIGHT                (matrixHeight)
 extern uint8_t colorOrder;                                  // Значения: 0=RGB, 1=RBG, 2=GRB, 3=GBR, 4=BRG, 5=BGR
@@ -481,9 +490,11 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 
 // LOG
 #if GENERAL_DEBUG
-  #define LOG Serial
+  #define LOG SystemLog::instance()
+  #define SYSLOG SystemLog::instance()
 #else
   #define LOG if(0) Serial
+  #define SYSLOG if(0) Serial
 #endif
 //================ Дальше только для разработчиков. Не меняйте здесь ничего, если не уверены в результате!!! ===================
 //#include <EEPROM.h>

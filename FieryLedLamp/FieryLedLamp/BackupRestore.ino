@@ -31,6 +31,7 @@ static const BackupConfigFileInfo BACKUP_CFG_FILES[] = {
   { "/config_multilamp.json",  "config_multilamp.json",  false },
   { "/config_sound.json",      "config_sound.json",      false },
   { "/config_sunset.json",     "config_sunset.json",     false },
+  { "/weather_city.json",      "weather_city.json",      false },
   { "/effect.ini",             "effect.ini",             false },
 };
 

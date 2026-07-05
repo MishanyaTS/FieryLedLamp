@@ -47,6 +47,7 @@ WiFiMulti wifiMulti;
 #include <WiFiUdp.h>
 #include <EEPROM.h>
 #include <TimeLib.h>
+#include "SystemLog.h"
 #include "Constants.h"
 
 #if USE_RTC
@@ -112,6 +113,11 @@ RtcDateTime timeToSet;
 
 uint8_t matrixWidth = WIDTH_DEFAULT;
 uint8_t matrixHeight = HEIGHT_DEFAULT;
+uint8_t segWidth = WIDTH_DEFAULT;                 // Размер одной физической матрицы по ширине
+uint8_t segHeight = HEIGHT_DEFAULT;                // Размер одной физической матрицы по высоте
+uint8_t segMatrixW = 1U;                           // Количество одинаковых матриц по горизонтали
+uint8_t segMatrixH = 1U;                           // Количество одинаковых матриц по вертикали
+bool panelFlip = false;                            // Переворот всей панели на 180°
 uint8_t ledDataLines = 2U;
 CRGB leds[NUM_LEDS_MAX];
 WiFiUDP Udp;
@@ -184,6 +190,7 @@ String yandexWeatherKey = "";
 bool useOpenWeather = false;
 String weatherApiKey = "";
 String weatherCity = "";
+String weatherCityRu = "";
 String yandexGeoId = "";
 bool   preferYandex = true;
 bool actualYandex = true;
@@ -191,6 +198,80 @@ float  currentTemp = -999.0f;
 String currentCondition = "";
 uint32_t weatherUpdateTimer = 0;
 const uint32_t WEATHER_UPDATE_INTERVAL = 600000UL;
+
+String findWeatherCityRuByKey(String weatherKey) {
+  weatherKey.trim();
+  if (!weatherKey.length() || weatherKey == F("|")) weatherKey = F("213|Moscow");
+
+  String citiesJson = readFile(F("weather_city.json"), 16384);
+  if (citiesJson == F("Failed") || citiesJson == F("Large") || !citiesJson.length()) return F("");
+
+  DynamicJsonDocument doc(16384);
+  DeserializationError err = deserializeJson(doc, citiesJson);
+  if (err) return F("");
+
+  String cityRu = doc[weatherKey].as<String>();
+  cityRu.trim();
+  if (cityRu.length()) return cityRu;
+
+  int sep = weatherKey.indexOf('|');
+  if (sep > 0) {
+    String code = weatherKey.substring(0, sep);
+    code.trim();
+    if (code.length()) {
+      JsonObject obj = doc.as<JsonObject>();
+      for (JsonPair kv : obj) {
+        String key = kv.key().c_str();
+        if (key.startsWith(code + F("|"))) {
+          cityRu = kv.value().as<String>();
+          cityRu.trim();
+          if (cityRu.length()) return cityRu;
+        }
+      }
+    }
+  }
+
+  return F("");
+}
+
+void applyWeatherCityValue(String weatherValue) {
+  weatherValue.trim();
+  if (!weatherValue.length()) weatherValue = F("|");
+
+  int weatherSep = weatherValue.indexOf('|');
+  if (weatherSep >= 0) {
+    yandexGeoId = weatherValue.substring(0, weatherSep);
+    weatherCity = weatherValue.substring(weatherSep + 1);
+  } else {
+    yandexGeoId = F("");
+    weatherCity = weatherValue;
+  }
+
+  yandexGeoId.trim();
+  weatherCity.trim();
+
+  String lookupKey = weatherValue;
+  if (!lookupKey.length() || lookupKey == F("|")) lookupKey = yandexGeoId + F("|") + weatherCity;
+
+  weatherCityRu = findWeatherCityRuByKey(lookupKey);
+  if (!weatherCityRu.length()) weatherCityRu = findWeatherCityRuByKey(yandexGeoId + F("|") + weatherCity);
+  if (!weatherCityRu.length()) weatherCityRu = weatherCity;
+  if (!weatherCityRu.length()) weatherCityRu = F("Москва");
+}
+
+String getWeatherCityTitle() {
+  String cityTitle = weatherCityRu;
+  cityTitle.trim();
+
+  if (!cityTitle.length()) {
+    cityTitle = findWeatherCityRuByKey(yandexGeoId + F("|") + weatherCity);
+    cityTitle.trim();
+  }
+
+  if (!cityTitle.length()) cityTitle = weatherCity;
+  if (!cityTitle.length()) cityTitle = F("Москва");
+  return cityTitle;
+}
 
 bool ssdpInitialized = false;
 IPAddress previousIP;
@@ -269,6 +350,32 @@ bool FavoritesManager::rndCycle = false;
 
 char TextTicker [86];
 int Painting = 0; CRGB DriwingColor = CRGB(255, 255, 255);
+
+static uint8_t clampMatrixByte(long value, uint8_t minValue, uint8_t maxValue, uint8_t fallback)
+{
+  if (value < minValue || value > maxValue) return fallback;
+  return (uint8_t)value;
+}
+
+static void applyMatrixSegments(uint8_t oneWidth, uint8_t oneHeight, uint8_t countW, uint8_t countH)
+{
+  segWidth = constrain(oneWidth, WIDTH_MIN, WIDTH_MAX);
+  segHeight = constrain(oneHeight, HEIGHT_MIN, HEIGHT_MAX);
+  segMatrixW = countW < 1U ? 1U : countW;
+  segMatrixH = countH < 1U ? 1U : countH;
+
+  uint16_t totalW = (uint16_t)segWidth * segMatrixW;
+  uint16_t totalH = (uint16_t)segHeight * segMatrixH;
+
+  while (segMatrixW > 1U && totalW > WIDTH_MAX)  { segMatrixW--; totalW = (uint16_t)segWidth * segMatrixW; }
+  while (segMatrixH > 1U && totalH > HEIGHT_MAX) { segMatrixH--; totalH = (uint16_t)segHeight * segMatrixH; }
+
+  if (totalW < WIDTH_MIN) totalW = WIDTH_MIN;
+  if (totalH < HEIGHT_MIN) totalH = HEIGHT_MIN;
+
+  matrixWidth = (uint8_t)totalW;
+  matrixHeight = (uint8_t)totalH;
+}
 
 static inline bool matrixUseTwoDataLines()
 {
@@ -523,7 +630,30 @@ IPAddress DNS1;//(208,67,222,222);     // Серверы DNS. Можно так�
 IPAddress DNS2(8,8,8,8);               // Резервный DNS
 
 uint8_t C_flag = 0;                    // Служебное
-uint16_t current_limit;                // Лимит настраиваемого тока
+uint16_t white_current_limit;          // Лимит тока для эффекта "Белый свет"
+uint16_t current_limit;                // Лимит тока для остальных эффетов
+
+uint32_t getActiveCurrentLimit()
+{
+  uint32_t limit = (currentMode == EFF_WHITE_COLOR) ? white_current_limit : current_limit;
+  if (limit == 0U)
+  {
+    limit = 0xFFFFUL;
+  }
+  return limit;
+}
+
+void applyCurrentLimitByMode()
+{
+  static uint32_t lastAppliedLimit = 0UL;
+  uint32_t limit = getActiveCurrentLimit();
+  if (lastAppliedLimit != limit)
+  {
+    FastLED.setMaxPowerInVoltsAndMilliamps(5, limit);
+    lastAppliedLimit = limit;
+  }
+}
+
 uint8_t last_minute;                   // Минуты
 uint8_t hours;                         // Часы
 //uint8_t last_hours; 
@@ -674,8 +804,24 @@ void setup()  //================================================================
     #endif
     String matrixWidthCfg = jsonRead(configHardware, "m_w");
     String matrixHeightCfg = jsonRead(configHardware, "m_h");
-    matrixWidth = matrixWidthCfg.length() ? constrain(matrixWidthCfg.toInt(), WIDTH_MIN, WIDTH_MAX) : WIDTH_DEFAULT;
-    matrixHeight = matrixHeightCfg.length() ? constrain(matrixHeightCfg.toInt(), HEIGHT_MIN, HEIGHT_MAX) : HEIGHT_DEFAULT;
+    String matrixSegWCfg = jsonRead(configHardware, "segMatrix_w");
+    String matrixSegHCfg = jsonRead(configHardware, "segMatrix_h");
+    String panelFlipCfg = jsonRead(configHardware, "panel_flip");
+
+    uint8_t oneWidth = matrixWidthCfg.length() ? clampMatrixByte(matrixWidthCfg.toInt(), WIDTH_MIN, WIDTH_MAX, WIDTH_DEFAULT) : WIDTH_DEFAULT;
+    uint8_t oneHeight = matrixHeightCfg.length() ? clampMatrixByte(matrixHeightCfg.toInt(), HEIGHT_MIN, HEIGHT_MAX, HEIGHT_DEFAULT) : HEIGHT_DEFAULT;
+    uint8_t countW = matrixSegWCfg.length() ? constrain(matrixSegWCfg.toInt(), 1, max(1U, (unsigned int)(WIDTH_MAX / oneWidth))) : 1U;
+    uint8_t countH = matrixSegHCfg.length() ? constrain(matrixSegHCfg.toInt(), 1, max(1U, (unsigned int)(HEIGHT_MAX / oneHeight))) : 1U;
+    panelFlip = (panelFlipCfg.length() && panelFlipCfg.toInt() == 1);
+    applyMatrixSegments(oneWidth, oneHeight, countW, countH);
+
+    bool matrixCfgChanged = false;
+    if (!matrixWidthCfg.length())  { jsonWrite(configHardware, "m_w", segWidth); matrixCfgChanged = true; }
+    if (!matrixHeightCfg.length()) { jsonWrite(configHardware, "m_h", segHeight); matrixCfgChanged = true; }
+    if (!matrixSegWCfg.length())   { jsonWrite(configHardware, "segMatrix_w", segMatrixW); matrixCfgChanged = true; }
+    if (!matrixSegHCfg.length())   { jsonWrite(configHardware, "segMatrix_h", segMatrixH); matrixCfgChanged = true; }
+    if (!panelFlipCfg.length())    { jsonWrite(configHardware, "panel_flip", panelFlip ? 1 : 0); matrixCfgChanged = true; }
+    if (matrixCfgChanged) writeFile(F("config_hardware.json"), configHardware);
 
     String dataLinesCfg = jsonRead(configHardware, "data_lines");
     ledDataLines = (dataLinesCfg.length() && dataLinesCfg.toInt() == 1) ? 1U : 2U;
@@ -905,7 +1051,17 @@ void setup()  //================================================================
   #endif // USE_MP3_PLAYER
   {
   String configHardware = readFile(F("config_hardware.json"), 1024);    
+  bool configHardwareChanged = false;
   current_limit = jsonReadtoInt(configHardware, "cur_lim");
+  {
+    String whiteCurrentLimitCfg = jsonRead(configHardware, "cur_lim_white");
+    white_current_limit = whiteCurrentLimitCfg.length() ? whiteCurrentLimitCfg.toInt() : WHITE_COLOR_CURRENT_LIMIT;
+    if (white_current_limit > CURRENT_LIMIT) white_current_limit = CURRENT_LIMIT;
+    if (!whiteCurrentLimitCfg.length()) {
+      jsonWrite(configHardware, "cur_lim_white", white_current_limit);
+      configHardwareChanged = true;
+    }
+  }
   MATRIX_TYPE = jsonReadtoInt(configHardware, "m_t");
   ORIENTATION = jsonReadtoInt(configHardware, "m_o");
   colorOrder = jsonReadtoInt(configHardware, "color_order");
@@ -947,6 +1103,7 @@ void setup()  //================================================================
   }
 #endif
     offset = WIDTH;
+    if (configHardwareChanged) writeFile(F("config_hardware.json"), configHardware);
   }
   {
   String configIP = readFile(F("config_ip.json"), 512);
@@ -973,10 +1130,7 @@ void setup()  //================================================================
   addMatrixLeds();
   FastLED.setBrightness(BRIGHTNESS);
   FastLED.setDither(BINARY_DITHER);   // более мягкие переходы на низкой яркости
-  if (current_limit > 0)
-  {
-    FastLED.setMaxPowerInVoltsAndMilliamps(5, current_limit);
-  }
+  applyCurrentLimitByMode();
   FastLED.clear();
   FastLED.show();
 
@@ -1298,9 +1452,21 @@ void setup()  //================================================================
   // ПОГОДА
 #if (USE_WEATHER == 1)
   weatherApiKey = jsonRead(configSetup, "openweather_key");
-  yandexGeoId = jsonRead(configSetup, "yandex_geo");
-  if (yandexGeoId.length() == 0) yandexGeoId = "";
-  weatherCity = jsonRead(configSetup, "city");
+  bool weatherCfgChanged = false;
+  String weatherCityAll = jsonRead(configSetup, "weather_city");
+  if (weatherCityAll.length() == 0) {
+    weatherCityAll = "|";
+    jsonWrite(configSetup, "weather_city", weatherCityAll);
+    weatherCfgChanged = true;
+  }
+
+  applyWeatherCityValue(weatherCityAll);
+
+  if (!jsonRead(configSetup, "weather_source").length()) {
+    jsonWrite(configSetup, "weather_source", 0);
+    weatherCfgChanged = true;
+  }
+  if (weatherCfgChanged) saveConfig();
   String configHardwareWeather = readFile(F("config_hardware.json"), 1024);
   if (configHardwareWeather == F("Failed") || configHardwareWeather == F("Large")) configHardwareWeather = F("{}");
   String weatherOnCfg = jsonRead(configHardwareWeather, "show_weather");
@@ -1952,14 +2118,28 @@ void updateWeather() {
   bool success = false;
   actualYandex = false;
 
-  if (preferYandex && yandexGeoId.length() > 0 && yandexGeoId != "0") {
-    success = getWeatherFromYandex();
-    if (success) actualYandex = true;
-  }
+  if (preferYandex) {
+    if (yandexGeoId.length() > 0 && yandexGeoId != "0") {
+      success = getWeatherFromYandex();
+      if (success) actualYandex = true;
+    }
 
-  if (!success && weatherApiKey.length() > 10 && weatherCity.length() > 0) {
-    success = getWeatherFromOpenWeather();
-    if (success) actualYandex = false;
+    if (!success && weatherApiKey.length() > 10 && weatherCity.length() > 0) {
+      LOG.println(F("Погода: Яндекс не ответил, пробую OpenWeather"));
+      success = getWeatherFromOpenWeather();
+      if (success) actualYandex = false;
+    }
+  } else {
+    if (weatherApiKey.length() > 10 && weatherCity.length() > 0) {
+      success = getWeatherFromOpenWeather();
+      if (success) actualYandex = false;
+    }
+
+    if (!success && yandexGeoId.length() > 0 && yandexGeoId != "0") {
+      LOG.println(F("Погода: OpenWeather не ответил, пробую Яндекс.Погоду"));
+      success = getWeatherFromYandex();
+      if (success) actualYandex = true;
+    }
   }
 
   if (!success) {
@@ -1969,9 +2149,17 @@ void updateWeather() {
     return;
   }
 
-  char buf[96];
-  snprintf(buf, sizeof(buf), "На улице: %+.1f°C, %s", currentTemp, currentCondition.c_str());
-  LOG.println(buf);
+  String weatherLine = F("На улице в городе ");
+  weatherLine += getWeatherCityTitle();
+  weatherLine += F(": ");
+  if (currentTemp > 0) weatherLine += F("+");
+  weatherLine += String(currentTemp, 1);
+  weatherLine += F("°C");
+  if (currentCondition.length() > 0) {
+    weatherLine += F(", ");
+    weatherLine += currentCondition;
+  }
+  LOG.println(weatherLine);
 }
 // -------------------- Yandex --------------------
 bool getWeatherFromYandex() {
@@ -2008,7 +2196,10 @@ bool getWeatherFromYandex() {
 }
 // -------------------- OpenWeather --------------------
 bool getWeatherFromOpenWeather() {
-  String path = "/data/2.5/weather?q=" + weatherCity +
+  String openWeatherCity = weatherCity;
+  openWeatherCity.replace(" ", "%20");
+
+  String path = "/data/2.5/weather?q=" + openWeatherCity +
                 "&appid=" + weatherApiKey +
                 "&units=metric&lang=ru";
 

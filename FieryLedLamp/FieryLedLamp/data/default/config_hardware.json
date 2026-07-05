@@ -5,6 +5,7 @@
 "tim_wdesc":26,
 "delay":10,
 "cur_lim":2000,
+"cur_lim_white":1500,
 "m_t":0,
 "m_o":0,
 "button_on":1,
@@ -27,5 +28,8 @@
 "m_w":16,
 "m_h":16,
 "color_order":2,
-"data_lines":1
+"data_lines":1,
+"segMatrix_w":1,
+"segMatrix_h":1,
+"panel_flip":0
 }

@@ -367,5 +367,6 @@ void Eff_Tick () {
       }
   }
   
+  applyCurrentLimitByMode();
   FastLED.show();
 }

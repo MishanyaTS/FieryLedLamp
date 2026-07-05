@@ -127,108 +127,60 @@ uint32_t getPixColorXY(int16_t x, int16_t y)
 
 #endif
 */
-// получить номер пикселя в ленте по координатам
-// библиотека FastLED тоже использует эту функцию
+// получить номер пикселя в одной физической матрице по локальным координатам
+static uint16_t XY_single(uint8_t x, uint8_t y)
+{
+  uint8_t THIS_X;
+  uint8_t THIS_Y;
+  uint8_t _WIDTH = segWidth;
+
+  switch (ORIENTATION)
+  {
+    case 0: THIS_X = x;                         THIS_Y = y; break;
+    case 1: _WIDTH = segHeight;                 THIS_X = y;                         THIS_Y = x; break;
+    case 2: THIS_X = x;                         THIS_Y = (segHeight - y - 1U); break;
+    case 3: _WIDTH = segHeight;                 THIS_X = (segHeight - y - 1U);      THIS_Y = x; break;
+    case 4: THIS_X = (segWidth - x - 1U);       THIS_Y = (segHeight - y - 1U); break;
+    case 5: _WIDTH = segHeight;                 THIS_X = (segHeight - y - 1U);      THIS_Y = (segWidth - x - 1U); break;
+    case 6: THIS_X = (segWidth - x - 1U);       THIS_Y = y; break;
+    case 7: _WIDTH = segHeight;                 THIS_X = y;                         THIS_Y = (segWidth - x - 1U); break;
+    default: THIS_X = x;                        THIS_Y = y; break;
+  }
+
+  if (!(THIS_Y & 0x01U) || MATRIX_TYPE)
+    return (uint16_t)THIS_Y * _WIDTH + THIS_X;
+  else
+    return (uint16_t)THIS_Y * _WIDTH + _WIDTH - THIS_X - 1U;
+}
+
+// получить номер пикселя в общей последовательной цепочке матриц
+// m_w/m_h — размер одного модуля, segMatrix_w/segMatrix_h — количество модулей
 uint16_t XY(uint8_t x, uint8_t y)
 {
   effectServiceTick();
 
- uint8_t THIS_X;
- uint8_t THIS_Y;
- uint8_t _WIDTH = WIDTH;
- 
- switch (ORIENTATION)
- {
-  case 0: THIS_X = x;                   //CONNECTION_ANGLE == 0 && STRIP_DIRECTION == 0
-          THIS_Y =y;
-          break;
-  case 1: _WIDTH = HEIGHT;              //CONNECTION_ANGLE == 0 && STRIP_DIRECTION == 1
-          THIS_X = y;
-          THIS_Y = x;
-          break;
-  case 2: THIS_X = x;                   //CONNECTION_ANGLE == 1 && STRIP_DIRECTION == 0
-          THIS_Y = (HEIGHT - y - 1);
-          break;
-  case 3: _WIDTH = HEIGHT;              //CONNECTION_ANGLE == 1 && STRIP_DIRECTION == 3
-          THIS_X = (HEIGHT - y - 1);
-          THIS_Y = x;
-          break;
-  case 4: THIS_X = (WIDTH - x - 1);     //CONNECTION_ANGLE == 2 && STRIP_DIRECTION == 2
-          THIS_Y = (HEIGHT - y - 1);
-          break;
-  case 5: _WIDTH = HEIGHT;              //CONNECTION_ANGLE == 2 && STRIP_DIRECTION == 3
-          THIS_X = (HEIGHT - y - 1);
-          THIS_Y = (WIDTH - x - 1);
-          break;
-  case 6: THIS_X = (WIDTH - x - 1);     //CONNECTION_ANGLE == 3 && STRIP_DIRECTION == 2
-          THIS_Y =y;
-          break;
-  case 7: _WIDTH = HEIGHT;              //CONNECTION_ANGLE == 3 && STRIP_DIRECTION == 1
-          THIS_X = y;
-          THIS_Y = (WIDTH - x - 1);
-          break;
-  default : THIS_X = x;                 // !! смотрите инструкцию: https://alexgyver.ru/wp-content/uploads/2018/11/scheme3.jpg
-            THIS_Y =y;                  // !! такого сочетания CONNECTION_ANGLE и STRIP_DIRECTION не бывает
-            break;
- }
- 
-  if (!(THIS_Y & 0x01) || MATRIX_TYPE)               // Even rows run forwards
-    return (THIS_Y * _WIDTH + THIS_X);
-  else                                                  
-    return (THIS_Y * _WIDTH + _WIDTH - THIS_X - 1);  // Odd rows run backwards
-}
+  if (x >= matrixWidth || y >= matrixHeight) return 0;
+  if (segWidth == 0U || segHeight == 0U || segMatrixW == 0U || segMatrixH == 0U) return 0;
 
-// если у вас матрица необычной формы с зазорами/вырезами, либо просто маленькая, тогда вам придётся переписать функцию XY() под себя
-// массив для переадресации можно сформировать на этом онлайн-сервисе: https://macetech.github.io/FastLED-XY-Map-Generator/
-// или ту по-русски: https://firelamp.pp.ua/matrix_generator/
-
-// ниже пример функции, когда у вас матрица 8х16, а вы хотите, чтобы эффекты рисовались, будто бы матрица 16х16 (рисуем по центру, а по бокам обрезано)
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  Х  Х  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  8  9  Х  Х  Х  Х  Х  Х  -  -  -  - 
-//   -  -  -  -  7  6  5  4  3  2  1  0  -  -  -  -
-/*
-uint8_t XY (uint8_t x, uint8_t y) {
-  // any out of bounds address maps to the first hidden pixel
-  if ( (x >= 16) || (y >= 16) ) {
-    return (128); //(LAST_VISIBLE_LED + 1);
+  if (panelFlip)
+  {
+    x = matrixWidth - 1U - x;
+    y = matrixHeight - 1U - y;
   }
 
-  const uint8_t XYTable[] = {
-   248, 249, 250, 251, 120, 121, 122, 123, 124, 125, 126, 127, 252, 253, 254, 255,
-   247, 246, 245, 244, 119, 118, 117, 116, 115, 114, 113, 112, 243, 242, 241, 240,
-   232, 233, 234, 235, 104, 105, 106, 107, 108, 109, 110, 111, 236, 237, 238, 239,
-   231, 230, 229, 228, 103, 102, 101, 100,  99,  98,  97,  96, 227, 226, 225, 224,
-   216, 217, 218, 219,  88,  89,  90,  91,  92,  93,  94,  95, 220, 221, 222, 223,
-   215, 214, 213, 212,  87,  86,  85,  84,  83,  82,  81,  80, 211, 210, 209, 208,
-   200, 201, 202, 203,  72,  73,  74,  75,  76,  77,  78,  79, 204, 205, 206, 207,
-   199, 198, 197, 196,  71,  70,  69,  68,  67,  66,  65,  64, 195, 194, 193, 192,
-   184, 185, 186, 187,  56,  57,  58,  59,  60,  61,  62,  63, 188, 189, 190, 191,
-   183, 182, 181, 180,  55,  54,  53,  52,  51,  50,  49,  48, 179, 178, 177, 176,
-   168, 169, 170, 171,  40,  41,  42,  43,  44,  45,  46,  47, 172, 173, 174, 175,
-   167, 166, 165, 164,  39,  38,  37,  36,  35,  34,  33,  32, 163, 162, 161, 160,
-   152, 153, 154, 155,  24,  25,  26,  27,  28,  29,  30,  31, 156, 157, 158, 159,
-   151, 150, 149, 148,  23,  22,  21,  20,  19,  18,  17,  16, 147, 146, 145, 144,
-   136, 137, 138, 139,   8,   9,  10,  11,  12,  13,  14,  15, 140, 141, 142, 143,
-   135, 134, 133, 132,   7,   6,   5,   4,   3,   2,   1,   0, 131, 130, 129, 128
-  };
+  uint8_t tileX = x / segWidth;
+  uint8_t tileY = y / segHeight;
+  if (tileX >= segMatrixW || tileY >= segMatrixH) return 0;
 
-  uint8_t i = (y * 16) + x;
-  return XYTable[i];
+  uint8_t localX = x % segWidth;
+  uint8_t localY = y % segHeight;
+  uint16_t pixelsPerTile = (uint16_t)segWidth * segHeight;
+  uint16_t tileNumber = (uint16_t)tileY * segMatrixW + tileX;   // последовательно: слева направо, затем следующая строка
+  uint16_t globalPixel = tileNumber * pixelsPerTile + XY_single(localX, localY);
+
+  if (globalPixel >= NUM_LEDS) return 0;
+  return globalPixel;
 }
-*/
 
 // оставлено для совместимости со эффектами из старых прошивок
 uint16_t getPixelNumber(uint8_t x, uint8_t y)

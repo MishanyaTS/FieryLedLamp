@@ -100,12 +100,15 @@ void User_setings ()  {
  HTTP.on("/tft_on", handle_tft_on); // Включение/выключение дисплея TFT в настройках оборудования
  HTTP.on("/ir_on", handle_ir_on); // Включение/выключение ИК-приёмника в настройках оборудования
  HTTP.on("/rtc_on", handle_rtc_on); // Включение/выключение модуля RTC в настройках оборудования
- HTTP.on("/cur_lim", handle_current_limit);  // выбор лимита тока матрицы
+ HTTP.on("/cur_lim_white", handle_white_current_limit);  // выбор лимита тока для эффекта "Белый свет"
+ HTTP.on("/cur_lim", handle_current_limit);  // выбор лимита тока для остальных эффетов
  HTTP.on("/m_t", handle_matrix_tipe);        // выбор типа матрицы
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
  HTTP.on("/color_order", handle_color_order);
  HTTP.on("/matrix_size", handle_matrix_size); // Размер матрицы
  HTTP.on("/data_lines", handle_data_lines);   // Выбор 1/2 DATA-линий для матриц больше 1024 LED
+ HTTP.on("/matrix_segments", handle_matrix_segments); // Несколько последовательно соединённых матриц
+ HTTP.on("/panel_flip", handle_panel_flip); // Переворот всей панели
  HTTP.on("/ssdp", handle_ssdp);  // Имя лампы
  HTTP.on("/res_to_def", handle_reset_to_default);  // Сброс всех настроек к "заводским"
  HTTP.on("/toe", handle_runing_text_over_effects );  // Выводить бегущую строку поверх эффектов
@@ -337,11 +340,14 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   return;
 #endif
 
+  String cityTitle = getWeatherCityTitle();
+
   if (!inClockWeatherMode) {
     doc["text"] = "—";
     doc["temp"] = -999;
     doc["init"] = false;
-    doc["city"] = weatherCity;
+    doc["city"] = cityTitle;
+    doc["city_en"] = weatherCity;
     doc["provider"] = actualYandex ? "yandex" : "openweather";
     serializeJson(doc, out);
     HTTP.send(200, "application/json", out);
@@ -349,20 +355,26 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   }
 
   if (currentTemp > -999) {
-    String source = preferYandex ? "Яндекс" : "OpenWeather";
-    String text = source + ": " + String((int)round(currentTemp)) + "°C";
+    int tempRounded = (int)round(currentTemp);
+    String text = cityTitle + F(": ");
+    if (tempRounded > 0) text += F("+");
+    text += String(tempRounded) + F("°C");
     if (currentCondition.length() > 0) {
-      text += ", " + currentCondition;
+      text += F(", ");
+      text += currentCondition;
     }
     doc["text"] = text;
-    doc["temp"] = (int)round(currentTemp);
+    doc["temp"] = tempRounded;
+    doc["description"] = currentCondition;
   } else {
     doc["text"] = "—";
     doc["temp"] = -998;
+    doc["description"] = "";
   }
 
   doc["init"] = inClockWeatherMode;
-  doc["city"] = weatherCity;
+  doc["city"] = cityTitle;
+  doc["city_en"] = weatherCity;
   doc["provider"] = actualYandex ? "yandex" : "openweather";
 
   serializeJson(doc, out);
@@ -376,28 +388,40 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
     }
     String key = HTTP.arg("key");
     String value = HTTP.arg("value");
-    LOG.printf("[SAVE] %s = %s\n", key.c_str(), value.c_str());
+    LOG.printf("[] %s = %s\n", key.c_str(), value.c_str());
 
     if (key == "show_weather") {
       String configHardware = readFile(F("config_hardware.json"), 2048);
+      if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
       inClockWeatherMode = (value == "1");
       jsonWrite(configHardware, "show_weather", inClockWeatherMode ? 1 : 0);
       writeFile(F("config_hardware.json"), configHardware);
-      if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
-        weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 1000;
+    } else {
+      if (key == "weather_city") {
+        jsonWrite(configSetup, "weather_city", value);
+        applyWeatherCityValue(value);
+        //LOG.printf("[WEATHER] город = %s, OpenWeather = %s, Yandex GeoID = %s\n",
+        //           getWeatherCityTitle().c_str(), weatherCity.c_str(), yandexGeoId.c_str());
+      } else {
+        jsonWrite(configSetup, key, value);
+
+        if (key == "openweather_key")       weatherApiKey = value;
+        else if (key == "weather_source")   preferYandex = (value == "0");
       }
-      HTTP.send(200, "text/plain", "OK");
-      return;
+      saveConfig();
     }
 
-    jsonWrite(configSetup, key, value);
-    saveConfig();
+#if (USE_WEATHER == 1)
+    currentTemp = -999.0f;
+    currentCondition = "";
+    if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
+      weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL;
+      updateWeather();
+      weatherUpdateTimer = millis();
+    }
+#endif
 
-    if (key == "openweather_key")          weatherApiKey = value;
-   else if (key == "yandex_geo") yandexGeoId = value;
-    else if (key == "city")                weatherCity = value;
-    else if (key == "prefer_yandex") preferYandex = (value == "1");
-    HTTP.send(200, "text/plain", "OK");
+    HTTP.send(200, "text/plain; charset=utf-8", "OK");
   });
 
 // IP адрес в модальном окне "Статусы устройств"
@@ -424,6 +448,22 @@ HTTP.on("/wifi_ip", HTTP_GET, []() {
   HTTP.send(200, "application/json; charset=utf-8", response);
 });
 
+HTTP.on("/logs", HTTP_GET, []() {
+  HTTP.send(200, "text/plain; charset=utf-8", SystemLog::instance().getAll());
+});
+
+HTTP.on("/logs_clear", HTTP_GET, []() {
+  SystemLog::instance().clear();
+  LOG.println(F("Системный лог очищен через WEB"));
+  HTTP.send(200, "text/plain; charset=utf-8", "OK");
+});
+
+HTTP.on("/logs_page", HTTP_GET, []() {
+  if (!handleFileRead("/logs.htm")) {
+    HTTP.send(404, "text/plain; charset=utf-8", "logs.htm not found");
+  }
+});
+
 HTTP.on("/features", HTTP_GET, []() {
     DynamicJsonDocument doc(512);
     doc["button"] = !!USE_BUTTON;
@@ -433,6 +473,7 @@ HTTP.on("/features", HTTP_GET, []() {
     doc["multilamp"] = !!USE_MULTIPLE_LAMPS_CONTROL;
     doc["mqtt"] = !!USE_MQTT;
     doc["ota"] = !!USE_OTA;
+    doc["logs"] = true;
     String response;
     serializeJson(doc, response);
     HTTP.send(200, "application/json", response);
@@ -2254,11 +2295,24 @@ void handle_current_limit ()   {
     //current_limit = constrain (HTTP.arg("cur_lim").toInt(), 0, CURRENT_LIMIT);
     if(current_limit > CURRENT_LIMIT) current_limit = CURRENT_LIMIT;
     jsonWrite(configHardware, "cur_lim", current_limit);
-    if(current_limit == 0) current_limit = 0xFFFF;
-    FastLED.setMaxPowerInVoltsAndMilliamps(5, current_limit);
+    applyCurrentLimitByMode();
     #if GENERAL_DEBUG
     LOG.print (F("\nЛимит тока current_limit = "));
     LOG.println(current_limit);
+    #endif
+    writeFile(F("config_hardware.json"), configHardware );
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_white_current_limit ()   {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    white_current_limit = HTTP.arg("cur_lim_white").toInt();
+    if(white_current_limit > CURRENT_LIMIT) white_current_limit = CURRENT_LIMIT;
+    jsonWrite(configHardware, "cur_lim_white", white_current_limit);
+    applyCurrentLimitByMode();
+    #if GENERAL_DEBUG
+    LOG.print (F("\nЛимит тока Белого света white_current_limit = "));
+    LOG.println(white_current_limit);
     #endif
     writeFile(F("config_hardware.json"), configHardware );
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -2291,12 +2345,14 @@ void handle_color_order() {
 
 void handle_matrix_size ()   {
     String configHardware = readFile(F("config_hardware.json"), 1024);
+    if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
     uint8_t newWidth = constrain(HTTP.arg("m_w").toInt(), WIDTH_MIN, WIDTH_MAX);
     uint8_t newHeight = constrain(HTTP.arg("m_h").toInt(), HEIGHT_MIN, HEIGHT_MAX);
-    matrixWidth = newWidth;
-    matrixHeight = newHeight;
-    jsonWrite(configHardware, "m_w", matrixWidth);
-    jsonWrite(configHardware, "m_h", matrixHeight);
+    applyMatrixSegments(newWidth, newHeight, segMatrixW, segMatrixH);
+    jsonWrite(configHardware, "m_w", segWidth);
+    jsonWrite(configHardware, "m_h", segHeight);
+    jsonWrite(configHardware, "segMatrix_w", segMatrixW);
+    jsonWrite(configHardware, "segMatrix_h", segMatrixH);
     writeFile(F("config_hardware.json"), configHardware );
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\", \"message\": \"Размер матрицы сохранен. Перезагрузка...\"}"));
     delay(100);
@@ -2312,6 +2368,40 @@ void handle_data_lines() {
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\", \"message\": \"Настройка DATA-линий сохранена. Перезагрузка...\"}"));
     delay(100);
     ESP.restart();
+}
+
+void handle_matrix_segments() {
+    String configHardware = readFile(F("config_hardware.json"), 2048);
+    if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
+
+    uint8_t oneWidth = HTTP.hasArg("m_w") ? constrain(HTTP.arg("m_w").toInt(), WIDTH_MIN, WIDTH_MAX) : segWidth;
+    uint8_t oneHeight = HTTP.hasArg("m_h") ? constrain(HTTP.arg("m_h").toInt(), HEIGHT_MIN, HEIGHT_MAX) : segHeight;
+    uint8_t countW = HTTP.hasArg("segMatrix_w") ? constrain(HTTP.arg("segMatrix_w").toInt(), 1, max(1U, (unsigned int)(WIDTH_MAX / oneWidth))) : segMatrixW;
+    uint8_t countH = HTTP.hasArg("segMatrix_h") ? constrain(HTTP.arg("segMatrix_h").toInt(), 1, max(1U, (unsigned int)(HEIGHT_MAX / oneHeight))) : segMatrixH;
+
+    applyMatrixSegments(oneWidth, oneHeight, countW, countH);
+
+    jsonWrite(configHardware, "m_w", segWidth);
+    jsonWrite(configHardware, "m_h", segHeight);
+    jsonWrite(configHardware, "segMatrix_w", segMatrixW);
+    jsonWrite(configHardware, "segMatrix_h", segMatrixH);
+    writeFile(F("config_hardware.json"), configHardware);
+
+    LOG.printf_P(PSTR("Матрицы: модуль %ux%u, количество %ux%u, общая панель %ux%u\n"),
+                 segWidth, segHeight, segMatrixW, segMatrixH, matrixWidth, matrixHeight);
+
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\", \"message\": \"Размеры матриц сохранены. Перезагрузка...\"}"));
+    delay(100);
+    ESP.restart();
+}
+
+void handle_panel_flip() {
+    String configHardware = readFile(F("config_hardware.json"), 1024);
+    if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
+    panelFlip = (HTTP.arg("panel_flip").toInt() == 1);
+    jsonWrite(configHardware, "panel_flip", panelFlip ? 1 : 0);
+    writeFile(F("config_hardware.json"), configHardware);
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
 void handle_reset_to_default ()   {
