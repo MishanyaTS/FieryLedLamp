@@ -210,7 +210,7 @@ String findWeatherCityRuByKey(String weatherKey) {
   DeserializationError err = deserializeJson(doc, citiesJson);
   if (err) return F("");
 
-  String cityRu = doc[weatherKey].as<String>();
+  String cityRu = doc[weatherKey] | "";
   cityRu.trim();
   if (cityRu.length()) return cityRu;
 
@@ -223,7 +223,7 @@ String findWeatherCityRuByKey(String weatherKey) {
       for (JsonPair kv : obj) {
         String key = kv.key().c_str();
         if (key.startsWith(code + F("|"))) {
-          cityRu = kv.value().as<String>();
+          cityRu = kv.value() | "";
           cityRu.trim();
           if (cityRu.length()) return cityRu;
         }
@@ -232,6 +232,81 @@ String findWeatherCityRuByKey(String weatherKey) {
   }
 
   return F("");
+}
+
+String normalizeWeatherCityRu(String cityName) {
+  cityName.trim();
+
+  static const char* upperRu[] = {
+    "А", "Б", "В", "Г", "Д", "Е", "Ё", "Ж", "З", "И", "Й",
+    "К", "Л", "М", "Н", "О", "П", "Р", "С", "Т", "У", "Ф",
+    "Х", "Ц", "Ч", "Ш", "Щ", "Ъ", "Ы", "Ь", "Э", "Ю", "Я"
+  };
+  static const char* lowerRu[] = {
+    "а", "б", "в", "г", "д", "е", "ё", "ж", "з", "и", "й",
+    "к", "л", "м", "н", "о", "п", "р", "с", "т", "у", "ф",
+    "х", "ц", "ч", "ш", "щ", "ъ", "ы", "ь", "э", "ю", "я"
+  };
+
+  for (uint8_t i = 0; i < 33; i++) cityName.replace(upperRu[i], lowerRu[i]);
+  cityName.replace("ё", "е");
+  return cityName;
+}
+
+bool isValidYandexGeoId(const String& geoId) {
+  if (!geoId.length() || geoId.length() > 12 || geoId == F("0")) return false;
+
+  for (size_t i = 0; i < geoId.length(); i++) {
+    if (geoId[i] < '0' || geoId[i] > '9') return false;
+  }
+
+  return true;
+}
+
+bool findWeatherCityByRussianName(String cityRu, String& geoId,
+                                  String& cityLatin, String& cityTitle) {
+  geoId = F("");
+  cityLatin = F("");
+  cityTitle = F("");
+  String normalizedSearch = normalizeWeatherCityRu(cityRu);
+  if (!normalizedSearch.length()) return false;
+
+  String citiesJson = readFile(F("weather_city.json"), 16384);
+  if (citiesJson == F("Failed") || citiesJson == F("Large") || !citiesJson.length()) return false;
+
+  DynamicJsonDocument doc(16384);
+  DeserializationError err = deserializeJson(doc, citiesJson);
+  if (err || !doc.is<JsonObject>()) return false;
+
+  JsonObject cities = doc.as<JsonObject>();
+  for (JsonPair city : cities) {
+    String savedCityRu = city.value() | "";
+    if (normalizeWeatherCityRu(savedCityRu) != normalizedSearch) continue;
+
+    String combinedKey = city.key().c_str();
+    int separator = combinedKey.indexOf('|');
+    if (separator < 0) continue;
+
+    geoId = combinedKey.substring(0, separator);
+    cityLatin = combinedKey.substring(separator + 1);
+    cityTitle = savedCityRu;
+    geoId.trim();
+    cityLatin.trim();
+    cityTitle.trim();
+    if (isValidYandexGeoId(geoId)) return true;
+  }
+
+  geoId = F("");
+  cityLatin = F("");
+  cityTitle = F("");
+  return false;
+}
+
+bool findOpenWeatherCityByRussianName(String cityRu, String& cityLatin) {
+  String geoId;
+  String cityTitle;
+  if (!findWeatherCityByRussianName(cityRu, geoId, cityLatin, cityTitle)) return false;
+  return cityLatin.length() > 0;
 }
 
 void applyWeatherCityValue(String weatherValue) {
@@ -2112,8 +2187,267 @@ bool httpsGetToString(const char* host, const String& path, uint32_t timeoutMs, 
   return outPayload.length() > 0;
 }
 
+String urlEncodeUtf8(const String& value) {
+  static const char hex[] = "0123456789ABCDEF";
+  String encoded;
+  encoded.reserve(value.length() * 3);
+
+  for (size_t i = 0; i < value.length(); i++) {
+    uint8_t c = (uint8_t)value[i];
+    bool unreserved = (c >= 'A' && c <= 'Z') ||
+                      (c >= 'a' && c <= 'z') ||
+                      (c >= '0' && c <= '9') ||
+                      c == '-' || c == '_' || c == '.' || c == '~';
+
+    if (unreserved) {
+      encoded += (char)c;
+    } else {
+      encoded += '%';
+      encoded += hex[(c >> 4) & 0x0F];
+      encoded += hex[c & 0x0F];
+    }
+  }
+
+  return encoded;
+}
+
+String getYandexSuggestText(JsonVariantConst value) {
+  if (value.is<const char*>()) {
+    String text = value.as<const char*>();
+    text.trim();
+    return text;
+  }
+
+  if (value.is<JsonObjectConst>()) {
+    String text = value["text"] | "";
+    if (!text.length()) text = value["value"] | "";
+    if (!text.length()) text = value["title"] | "";
+    text.trim();
+    return text;
+  }
+
+  return F("");
+}
+
+String getYandexSuggestGeoId(JsonVariantConst result) {
+  String geoId = result["geoid"].as<String>();
+  if (!geoId.length()) geoId = result["geo_id"].as<String>();
+  if (!geoId.length()) geoId = result["data"]["geoid"].as<String>();
+  if (!geoId.length()) geoId = result["data"]["geo_id"].as<String>();
+  geoId.trim();
+  return isValidYandexGeoId(geoId) ? geoId : String();
+}
+
+String getYandexSuggestTitle(JsonVariantConst result) {
+  String title = getYandexSuggestText(result["title"]);
+  if (!title.length()) title = getYandexSuggestText(result["text"]);
+  if (!title.length()) title = getYandexSuggestText(result["name"]);
+  if (!title.length()) title = getYandexSuggestText(result["data"]["title"]);
+  if (!title.length()) title = getYandexSuggestText(result["data"]["text"]);
+  title.trim();
+  return title;
+}
+
+String weatherCityNameForMatch(String cityName) {
+  int separator = cityName.indexOf(',');
+  if (separator > 0) cityName = cityName.substring(0, separator);
+  cityName.trim();
+  return normalizeWeatherCityRu(cityName);
+}
+
+bool getYandexGeoIdByCityName(String cityQuery, String& geoId, String& cityTitle) {
+  geoId = F("");
+  cityTitle = F("");
+  cityQuery.trim();
+
+  if (!cityQuery.length() || WiFi.status() != WL_CONNECTED) return false;
+
+  String path = F("/suggest-geo?search_type=tune&v=9&results=5&lang=ru_RU&callback=callback&part=");
+  path += urlEncodeUtf8(cityQuery);
+
+  String payload;
+  if (!httpsGetToString("suggest-maps.yandex.ru", path, 8000, payload)) return false;
+
+  // Сервис может вернуть JSON-объект, JSON-массив или JSONP: callback({...}).
+  int objectStart = payload.indexOf('{');
+  int arrayStart = payload.indexOf('[');
+  int jsonStart;
+  char jsonOpen;
+  if (objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart)) {
+    jsonStart = objectStart;
+    jsonOpen = '{';
+  } else {
+    jsonStart = arrayStart;
+    jsonOpen = '[';
+  }
+  int jsonEnd = (jsonOpen == '{') ? payload.lastIndexOf('}') : payload.lastIndexOf(']');
+  if (jsonStart < 0 || jsonEnd <= jsonStart) return false;
+
+  DynamicJsonDocument doc(24576);
+  DeserializationError err = deserializeJson(doc, payload.substring(jsonStart, jsonEnd + 1));
+  if (err) return false;
+
+  JsonArrayConst results;
+  if (doc.is<JsonArray>()) results = doc.as<JsonArrayConst>();
+  if (results.isNull()) results = doc["results"].as<JsonArrayConst>();
+  if (results.isNull()) results = doc["items"].as<JsonArrayConst>();
+  if (results.isNull()) results = doc["suggestions"].as<JsonArrayConst>();
+  if (results.isNull()) results = doc["data"]["results"].as<JsonArrayConst>();
+  if (results.isNull()) results = doc["data"]["items"].as<JsonArrayConst>();
+  if (results.isNull() || results.size() == 0) return false;
+
+  String normalizedQuery = weatherCityNameForMatch(cityQuery);
+  String firstGeoId;
+  String firstTitle;
+
+  for (JsonVariantConst result : results) {
+    String candidateGeoId = getYandexSuggestGeoId(result);
+    if (!candidateGeoId.length()) continue;
+
+    String candidateTitle = getYandexSuggestTitle(result);
+    if (!firstGeoId.length()) {
+      firstGeoId = candidateGeoId;
+      firstTitle = candidateTitle;
+    }
+
+    if (candidateTitle.length() &&
+        weatherCityNameForMatch(candidateTitle) == normalizedQuery) {
+      geoId = candidateGeoId;
+      cityTitle = candidateTitle;
+      break;
+    }
+  }
+
+  if (!geoId.length()) {
+    geoId = firstGeoId;
+    cityTitle = firstTitle;
+  }
+
+  if (!isValidYandexGeoId(geoId)) {
+    geoId = F("");
+    cityTitle = F("");
+    return false;
+  }
+
+  int separator = cityTitle.indexOf(',');
+  if (separator > 0) cityTitle = cityTitle.substring(0, separator);
+  cityTitle.trim();
+  if (!cityTitle.length()) {
+    cityTitle = cityQuery;
+    separator = cityTitle.indexOf(',');
+    if (separator > 0) cityTitle = cityTitle.substring(0, separator);
+    cityTitle.trim();
+  }
+
+  return cityTitle.length() > 0;
+}
+
+bool containsRussianUtf8(const String& value) {
+  for (size_t i = 0; i < value.length(); i++) {
+    uint8_t c = (uint8_t)value[i];
+    if (c == 0xD0 || c == 0xD1) return true;
+  }
+  return false;
+}
+
+bool getOpenWeatherLatinName(String cityRu, String& cityLatin) {
+  cityLatin = F("");
+  cityRu.trim();
+
+  if (!cityRu.length() || WiFi.status() != WL_CONNECTED || weatherApiKey.length() <= 10) {
+    return false;
+  }
+
+  String path = F("/geo/1.0/direct?q=");
+  path += urlEncodeUtf8(cityRu);
+  path += F("&limit=1&appid=");
+  path += weatherApiKey;
+
+  String payload;
+  if (!httpsGetToString("api.openweathermap.org", path, 8000, payload)) return false;
+
+  DynamicJsonDocument doc(12288);
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err || !doc.is<JsonArray>() || doc.size() == 0) return false;
+
+  cityLatin = doc[0]["local_names"]["en"] | "";
+  cityLatin.trim();
+
+  if (!cityLatin.length()) {
+    cityLatin = doc[0]["name"] | "";
+    cityLatin.trim();
+  }
+
+  if (!cityLatin.length() || containsRussianUtf8(cityLatin)) {
+    cityLatin = F("");
+    return false;
+  }
+
+  return true;
+}
+
+bool upgradeYandexOnlyCityForOpenWeather() {
+  if (weatherCity.length()) return true;
+  if (!yandexGeoId.length() || yandexGeoId == F("0")) return false;
+
+  String yandexOnlyValue = yandexGeoId + F("|");
+  String citiesJson = readFile(F("weather_city.json"), 16384);
+  if (citiesJson == F("Failed") || citiesJson == F("Large") || !citiesJson.length()) return false;
+
+  String cityRu;
+  {
+    DynamicJsonDocument citiesDoc(16384);
+    DeserializationError citiesError = deserializeJson(citiesDoc, citiesJson);
+    if (citiesError || !citiesDoc.is<JsonObject>()) return false;
+
+    cityRu = citiesDoc[yandexOnlyValue] | "";
+    cityRu.trim();
+  }
+
+  if (!cityRu.length()) {
+    LOG.println(F("Погода: не найдено русское название текущего города"));
+    return false;
+  }
+
+  String openWeatherCity;
+  if (!findOpenWeatherCityByRussianName(cityRu, openWeatherCity) &&
+      !getOpenWeatherLatinName(cityRu, openWeatherCity)) {
+    LOG.println(F("Погода: не удалось определить название города для OpenWeather"));
+    return false;
+  }
+
+  String weatherValue = yandexGeoId + F("|") + openWeatherCity;
+  {
+    DynamicJsonDocument citiesDoc(16384);
+    DeserializationError citiesError = deserializeJson(citiesDoc, citiesJson);
+    if (citiesError || !citiesDoc.is<JsonObject>()) return false;
+
+    citiesDoc[weatherValue] = cityRu;
+    if (weatherValue != yandexOnlyValue) citiesDoc.remove(yandexOnlyValue);
+    if (citiesDoc.overflowed()) return false;
+
+    String updatedCitiesJson;
+    serializeJsonPretty(citiesDoc, updatedCitiesJson);
+    updatedCitiesJson += '\n';
+    String writeResult = writeFile(F("weather_city.json"), updatedCitiesJson);
+    if (writeResult.startsWith(F("Failed"))) return false;
+  }
+
+  jsonWrite(configSetup, "weather_city", weatherValue);
+  applyWeatherCityValue(weatherValue);
+  saveConfig();
+
+  LOG.printf("[WEATHER] Город обновлён для OpenWeather: %s -> %s\n",
+             cityRu.c_str(), openWeatherCity.c_str());
+  return true;
+}
+
 void updateWeather() {
   if (WiFi.status() != WL_CONNECTED) return;
+
+  if (!preferYandex && weatherApiKey.length() > 10 && !weatherCity.length()) {
+    upgradeYandexOnlyCityForOpenWeather();
+  }
 
   bool success = false;
   actualYandex = false;

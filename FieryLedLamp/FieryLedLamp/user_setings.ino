@@ -381,6 +381,144 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
   HTTP.send(200, "application/json", out);
 });
 
+  HTTP.on("/save_weather_city", HTTP_GET, []() {
+    // Параметр openweather_city оставлен для совместимости со старой WEB-страницей.
+    String manualCityRu;
+    if (HTTP.hasArg("city")) manualCityRu = HTTP.arg("city");
+    else if (HTTP.hasArg("openweather_city")) manualCityRu = HTTP.arg("openweather_city");
+    manualCityRu.trim();
+
+    if (!manualCityRu.length()) {
+      HTTP.send(400, "text/plain; charset=utf-8", "Введите название города");
+      return;
+    }
+
+    if (manualCityRu.length() > 96 || manualCityRu.indexOf('|') >= 0) {
+      HTTP.send(400, "text/plain; charset=utf-8", "Некорректное название города");
+      return;
+    }
+
+    String cityTitleFromInput = manualCityRu;
+    int countrySeparator = cityTitleFromInput.indexOf(',');
+    if (countrySeparator > 0) cityTitleFromInput = cityTitleFromInput.substring(0, countrySeparator);
+    cityTitleFromInput.trim();
+
+    String manualYandexGeo;
+    String openWeatherCity;
+    String resolvedCityTitle;
+    bool cityFoundLocally = findWeatherCityByRussianName(
+      cityTitleFromInput, manualYandexGeo, openWeatherCity, resolvedCityTitle
+    );
+
+#if (USE_WEATHER == 1)
+    if (!cityFoundLocally) {
+      if (WiFi.status() != WL_CONNECTED) {
+        HTTP.send(503, "text/plain; charset=utf-8",
+                  "Для определения кода города подключите лампу к интернету");
+        return;
+      }
+
+      if (!getYandexGeoIdByCityName(manualCityRu, manualYandexGeo, resolvedCityTitle)) {
+        HTTP.send(422, "text/plain; charset=utf-8",
+                  "Не удалось определить код города. Проверьте название");
+        return;
+      }
+    }
+
+    bool openWeatherCityResolved = openWeatherCity.length() ||
+                                   getOpenWeatherLatinName(manualCityRu, openWeatherCity);
+
+    if (!openWeatherCityResolved && !preferYandex) {
+      if (weatherApiKey.length() <= 10) {
+        HTTP.send(422, "text/plain; charset=utf-8",
+                  "Для выбранного OpenWeather заполните API-ключ");
+      } else if (WiFi.status() != WL_CONNECTED) {
+        HTTP.send(503, "text/plain; charset=utf-8",
+                  "Для выбранного OpenWeather не удалось определить город без подключения к интернету");
+      } else {
+        HTTP.send(422, "text/plain; charset=utf-8",
+                  "OpenWeather не смог определить латинское название города");
+      }
+      return;
+    }
+#else
+    if (!cityFoundLocally) {
+      HTTP.send(422, "text/plain; charset=utf-8",
+                "Город отсутствует в локальном справочнике");
+      return;
+    }
+#endif
+
+    String citiesJson = readFile(F("weather_city.json"), 16384);
+    if (citiesJson == F("Failed") || citiesJson == F("Large") || !citiesJson.length()) {
+      HTTP.send(500, "text/plain; charset=utf-8", "Не удалось прочитать weather_city.json");
+      return;
+    }
+
+    String weatherValue = manualYandexGeo + F("|") + openWeatherCity;
+    String cityTitle;
+
+    {
+      DynamicJsonDocument citiesDoc(16384);
+      DeserializationError citiesError = deserializeJson(citiesDoc, citiesJson);
+      if (citiesError || !citiesDoc.is<JsonObject>()) {
+        HTTP.send(500, "text/plain; charset=utf-8", "Ошибка формата weather_city.json");
+        return;
+      }
+
+      cityTitle = citiesDoc[weatherValue] | "";
+      cityTitle.trim();
+      if (!cityTitle.length()) {
+        cityTitle = resolvedCityTitle;
+        int resolvedSeparator = cityTitle.indexOf(',');
+        if (resolvedSeparator > 0) cityTitle = cityTitle.substring(0, resolvedSeparator);
+        cityTitle.trim();
+        if (!cityTitle.length()) cityTitle = cityTitleFromInput;
+        citiesDoc[weatherValue] = cityTitle;
+      }
+
+      if (openWeatherCity.length()) {
+        String yandexOnlyValue = manualYandexGeo + F("|");
+        if (yandexOnlyValue != weatherValue && citiesDoc.containsKey(yandexOnlyValue)) {
+          String oldCityTitle = citiesDoc[yandexOnlyValue] | "";
+          if (normalizeWeatherCityRu(oldCityTitle) == normalizeWeatherCityRu(cityTitleFromInput)) {
+            citiesDoc.remove(yandexOnlyValue);
+          }
+        }
+      }
+
+      if (citiesDoc.overflowed()) {
+        HTTP.send(507, "text/plain; charset=utf-8", "В weather_city.json недостаточно места для нового города");
+        return;
+      }
+
+      String updatedCitiesJson;
+      serializeJsonPretty(citiesDoc, updatedCitiesJson);
+      updatedCitiesJson += '\n';
+      String writeResult = writeFile(F("weather_city.json"), updatedCitiesJson);
+      if (writeResult.startsWith(F("Failed"))) {
+        HTTP.send(500, "text/plain; charset=utf-8", "Не удалось сохранить weather_city.json");
+        return;
+      }
+    }
+
+    jsonWrite(configSetup, "weather_city", weatherValue);
+    applyWeatherCityValue(weatherValue);
+    saveConfig();
+
+#if (USE_WEATHER == 1)
+    currentTemp = -999.0f;
+    currentCondition = "";
+    if (inClockWeatherMode && WiFi.status() == WL_CONNECTED) {
+    weatherUpdateTimer = millis() - WEATHER_UPDATE_INTERVAL + 5000UL;
+    }
+#endif
+
+    LOG.printf("[WEATHER] Добавлен город: %s, Yandex GeoID=%s, OpenWeather=%s\n",
+               cityTitle.c_str(), manualYandexGeo.c_str(), openWeatherCity.c_str());
+    HTTP.send(200, "text/plain; charset=utf-8", "WEATHER_CITY_SAVED");
+  });
+
   HTTP.on("/save_weather_param", HTTP_GET, []() {
     if (!HTTP.hasArg("key") || !HTTP.hasArg("value")) {
       HTTP.send(400, "text/plain", "Missing key or value");
