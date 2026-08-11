@@ -38,6 +38,7 @@ static const uint8_t exp_gamma[256] PROGMEM = {
 
 /* binImage буффер для бинарных img размер выбран по размеру подгружаемых картинок */
 byte binImage[2336];
+size_t binImageLoadedSize = 0U;
 // ======================================
 // espModeStat default lamp start effect
 // ======================================
@@ -229,40 +230,38 @@ void gradientDownTop( uint8_t bottom, CHSV bottom_color, uint8_t top, CHSV top_c
 // --------------------------------------
 // функция чтения бинарного файла изображения
 //    из файловой системы лампы 
-void readBinFile(String fileName, size_t len ) {
+bool readBinFile(String fileName, size_t requestedLimit) {
+
+  binImageLoadedSize = 0U;
 
   File binFile = LittleFS.open("/" + fileName, "r");
   if (!binFile) {
     LOG.println("File not found");
-    return;
+    return false;
   }
   size_t size = binFile.size();
-  if (size > len) {
+  size_t safeLimit = requestedLimit < sizeof(binImage) ? requestedLimit : sizeof(binImage);
+  if (size < 16U || size > safeLimit) {
     binFile.close();
-    LOG.println("Large File");
-    return;
+    LOG.println("Invalid or large image file");
+    return false;
   }
 
-  byte buffer[size];
-  uint16_t amount;
-
-  if (binFile == NULL) exit (1);
   binFile.seek(0);
-
-  while (binFile.available()) {
-    amount = binFile.read(buffer, size);
+  memset(binImage, 0, sizeof(binImage));
+  size_t amount = binFile.read(binImage, size);
+  binFile.close();
+  if (amount != size) {
+    LOG.println("Image read error");
+    return false;
   }
+  binImageLoadedSize = amount;
 
 #if GENERAL_DEBUG
-  LOG.printf_P(PSTR("File size • %08d bytes\n"), amount);
+  LOG.printf_P(PSTR("File size • %08u bytes\n"), (unsigned int)amount);
 #endif
 
-  // binImage = malloc(amount);
-  // byte *by = malloc(1024);
-  // memset(binImage, 66, 1552);
-  // byte *by = new byte[size];
-  memcpy(binImage, buffer, amount);
-  binFile.close();
+  return true;
 }
 
 // --------------------------------------
@@ -278,28 +277,30 @@ uint16_t getSizeValue(byte* buffer, byte b ) {
 void scrollImage(uint16_t imgW, uint16_t imgH, uint16_t start_row) {
     const byte HEADER = 16;
     const uint16_t BYTES_PER_PIXEL = 2U;
+    if (imgW == 0U || imgH == 0U || binImageLoadedSize < HEADER) return;
     uint8_t r, g, b;
     
-    // Изменено на int8_t, чтобы корректно обрабатывать отрицательные значения, 
-    // когда высота картинки больше высоты матрицы (например, 16x16 на матрице 8x8)
-    int8_t padding = floor((HEIGHT - imgH) / 2.0f);
-    int8_t topPos = HEIGHT - padding - 1;
+    // Знаковая арифметика корректно обрабатывает картинку выше матрицы.
+    int16_t padding = ((int16_t)HEIGHT - (int16_t)imgH) / 2;
+    int16_t topPos = (int16_t)HEIGHT - padding - 1;
     
-    uint16_t pixIndex;
+    uint32_t pixIndex;
     uint8_t delta = 0;
 
     for (uint16_t x = 0; x < WIDTH; x++) {
         for (uint16_t y = 0; y < (imgH - 1); y++) {
             if ((start_row + x) > WIDTH) { delta = 1; }
-            pixIndex = HEADER + (start_row + x + y * imgW) * BYTES_PER_PIXEL;
+            uint16_t sourceX = (start_row + x) % imgW;
+            pixIndex = HEADER + ((uint32_t)sourceX + (uint32_t)y * imgW) * BYTES_PER_PIXEL;
+            if (pixIndex + 1U >= binImageLoadedSize) continue;
             
-            // Исправлены битовые сдвиги (в оригинале были пробелы: < < 5)
+            // RGB565: три старших бита зелёного находятся в младшем байте.
             r = (binImage[pixIndex + 1]  & 0xF8);
-            g = ((binImage[pixIndex + 1]  & 0x07) << 5) + ((binImage[pixIndex]  & 0xE0) << 5);
+            g = ((binImage[pixIndex + 1]  & 0x07) << 5) + ((binImage[pixIndex]  & 0xE0) >> 3);
             b = (binImage[pixIndex]  & 0x1F) << 3;
 
             // Расчёт координаты Y с проверкой границ
-            int8_t yPos = topPos - y - delta;
+            int16_t yPos = topPos - (int16_t)y - delta;
             if (yPos >= 0 && yPos < HEIGHT) {
                 leds[XY(x, yPos)] = CRGB(r, g, b);
             }
@@ -2929,9 +2930,21 @@ void PlanetEarth() {
         else if (HEIGHT < 24)   file_name = "globe1";      // Стандартное (обычно 16x16)
         else                    file_name = "globe_big";   // Для больших матриц
 
-        readBinFile("bin/" + file_name + ".img", 4112);
+        if (!readBinFile("bin/" + file_name + ".img", sizeof(binImage))) {
+            imgW = 0U;
+            imgH = 0U;
+            return;
+        }
         imgW = getSizeValue(binImage, 8);
         imgH = getSizeValue(binImage, 10);
+
+        uint32_t requiredSize = 16UL + (uint32_t)imgW * (uint32_t)imgH * 2UL;
+        if (imgW < imgH || imgH == 0U || requiredSize > binImageLoadedSize) {
+            LOG.println(F("Invalid image dimensions"));
+            imgW = 0U;
+            imgH = 0U;
+            return;
+        }
 
         #if GENERAL_DEBUG
         LOG.printf_P(PSTR("Image • %03d x %02d px\n"), imgW, imgH);
@@ -2940,6 +2953,7 @@ void PlanetEarth() {
         scrollImage(imgW, imgH, 0U);
         ff_x = 1U;
     }
+    if (imgW == 0U || imgH == 0U) return;
     /* scrool index reverse --> */
     if (ff_x < 1) ff_x = (imgW - imgH);
     scrollImage(imgW, imgH, ff_x - 1);
@@ -4093,4 +4107,566 @@ void FlagRoutine() {
   }
 
   lastUpdateTime = currentTime;
+}
+
+// ============= ЭФФЕКТ ЗМЕЙКА ===============
+
+void snakeGameRoutine()
+{
+  static uint16_t snakeCells[NUM_LEDS_MAX];                 // логические номера клеток, индекс 0 - голова
+  static uint8_t snakeOccupied[(NUM_LEDS_MAX + 7U) / 8U];  // карта занятых клеток: 4096 клеток = 512 байт
+  static uint16_t snakeLen;
+  static int8_t dirX, dirY;                                 // текущее направление движения
+  static uint16_t foodCell;
+  static uint8_t blinkPhase;                                // >0 - мигание после конца игры/победы
+  static uint8_t framePulse = 0U;                           // фаза пульсации еды
+  static uint8_t previousWidth = 0U;
+  static uint8_t previousHeight = 0U;
+
+  const uint8_t boardWidth = WIDTH;
+  const uint8_t boardHeight = HEIGHT;
+  const uint16_t boardSize = (uint16_t)boardWidth * boardHeight;
+
+  if (boardWidth == 0U || boardHeight == 0U || boardSize > NUM_LEDS_MAX)
+  {
+    loadingFlag = false;
+    FastLED.clear();
+    return;
+  }
+
+  const bool effectLoading = loadingFlag;
+  if (effectLoading)
+  {
+    #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+      if (selectedSettings){
+        setModeSettings(1U + random8(100U), 150U + random8(90U));
+      }
+    #endif
+
+    loadingFlag = false;
+  }
+
+  if (effectLoading || previousWidth != boardWidth || previousHeight != boardHeight)
+  {
+    previousWidth = boardWidth;
+    previousHeight = boardHeight;
+    snakeLen = 0U;
+    blinkPhase = 1U;                                        // старт через ветку перезапуска ниже
+    memset(snakeOccupied, 0, sizeof(snakeOccupied));
+  }
+
+  auto cellOccupied = [&](uint16_t cell) -> bool
+  {
+    return (snakeOccupied[cell >> 3U] & (uint8_t)(1U << (cell & 0x07U))) != 0U;
+  };
+
+  auto occupyCell = [&](uint16_t cell)
+  {
+    snakeOccupied[cell >> 3U] |= (uint8_t)(1U << (cell & 0x07U));
+  };
+
+  auto releaseCell = [&](uint16_t cell)
+  {
+    snakeOccupied[cell >> 3U] &= (uint8_t)~(1U << (cell & 0x07U));
+  };
+
+  auto placeFood = [&]() -> bool
+  {
+    if (snakeLen >= boardSize) return false;
+
+    uint16_t candidate = (uint16_t)random((long)boardSize);
+    for (uint16_t checked = 0U; checked < boardSize; checked++)
+    {
+      if (!cellOccupied(candidate))
+      {
+        foodCell = candidate;
+        return true;
+      }
+      if (++candidate >= boardSize) candidate = 0U;
+      effectServiceTick();
+    }
+    return false;
+  };
+
+  framePulse += 12U;
+  const uint8_t scale = (modes[currentMode].Scale > 100U) ? 100U : modes[currentMode].Scale;
+  const uint8_t hue = (uint16_t)scale * 255U / 100U;
+
+  // мигание в конце игры и перезапуск
+  if (blinkPhase > 0U)
+  {
+    blinkPhase--;
+    if (blinkPhase == 0U)                                   // новая партия: змейка из трёх точек в центре
+    {
+      snakeLen = min((uint16_t)3U, boardSize);
+      memset(snakeOccupied, 0, sizeof(snakeOccupied));
+      for (uint16_t i = 0U; i < snakeLen; i++)
+      {
+        uint8_t x = (uint8_t)((boardWidth / 2U + boardWidth - (i % boardWidth)) % boardWidth);
+        uint8_t y = boardHeight / 2U;
+        snakeCells[i] = (uint16_t)y * boardWidth + x;
+        occupyCell(snakeCells[i]);
+      }
+      dirX = 1;
+      dirY = 0;
+
+      if (!placeFood())
+      {
+        blinkPhase = 7U;
+        return;
+      }
+    }
+    else
+    {
+      FastLED.clear();
+      if (blinkPhase & 0x01U)                               // мигаем телом через кадр
+      {
+        for (uint16_t i = 0U; i < snakeLen; i++)
+        {
+          drawPixelXY(snakeCells[i] % boardWidth, snakeCells[i] / boardWidth, CHSV(hue, 255U, 255U));
+        }
+      }
+      return;
+    }
+  }
+
+  const uint8_t headX = snakeCells[0] % boardWidth;
+  const uint8_t headY = snakeCells[0] / boardWidth;
+  const uint8_t foodX = foodCell % boardWidth;
+  const uint8_t foodY = foodCell / boardWidth;
+
+  // выбор направления: вперёд / налево / направо (разворот на 180 градусов запрещён)
+  int8_t candX[3] = {dirX, (int8_t)-dirY, dirY};
+  int8_t candY[3] = {dirY, dirX, (int8_t)-dirX};
+  int8_t bestDir = -1;
+  uint16_t bestDist = 0xFFFFU;
+
+  for (uint8_t c = 0U; c < 3U; c++)
+  {
+    int16_t nxRaw = (int16_t)headX + candX[c];
+    if (nxRaw < 0) nxRaw += boardWidth;
+    else if (nxRaw >= boardWidth) nxRaw -= boardWidth;
+
+    int16_t nyRaw = (int16_t)headY + candY[c];
+    if (nyRaw < 0 || nyRaw >= boardHeight) continue;        // вертикаль ограничена стенками
+
+    uint8_t nx = (uint8_t)nxRaw;
+    uint8_t ny = (uint8_t)nyRaw;
+    uint16_t nextCell = (uint16_t)ny * boardWidth + nx;
+    bool willEat = nextCell == foodCell;
+
+    // В обычном ходе хвост освободится, поэтому в его текущую клетку заходить можно.
+    if (cellOccupied(nextCell) && (willEat || nextCell != snakeCells[snakeLen - 1U])) continue;
+
+    uint8_t dx = (foodX > nx) ? (foodX - nx) : (nx - foodX);
+    uint8_t dxWrap = min(dx, (uint8_t)(boardWidth - dx));
+    uint16_t dist = (uint16_t)dxWrap + ((foodY > ny) ? (foodY - ny) : (ny - foodY));
+    if (dist < bestDist)                                    // при равенстве сохраняем движение прямо
+    {
+      bestDist = dist;
+      bestDir = c;
+    }
+  }
+
+  if (bestDir < 0)                                          // все направления заняты
+  {
+    blinkPhase = 7U;
+    return;
+  }
+
+  dirX = candX[bestDir];
+  dirY = candY[bestDir];
+  int16_t newXRaw = (int16_t)headX + dirX;
+  if (newXRaw < 0) newXRaw += boardWidth;
+  else if (newXRaw >= boardWidth) newXRaw -= boardWidth;
+  uint8_t newX = (uint8_t)newXRaw;
+  uint8_t newY = (uint8_t)((int16_t)headY + dirY);
+  uint16_t newCell = (uint16_t)newY * boardWidth + newX;
+
+  bool ate = newCell == foodCell;
+  if (!ate) releaseCell(snakeCells[snakeLen - 1U]);
+
+  uint16_t shift = ate ? snakeLen : snakeLen - 1U;          // при еде хвост не отбрасывается
+  for (uint16_t i = shift; i > 0U; i--)
+  {
+    snakeCells[i] = snakeCells[i - 1U];
+  }
+  snakeCells[0] = newCell;
+  occupyCell(newCell);
+
+  if (ate)
+  {
+    snakeLen++;
+    if (snakeLen >= boardSize)                              // вся матрица заполнена - победа
+    {
+      blinkPhase = 7U;
+      return;
+    }
+
+    if (!placeFood())                                       // максимум NUM_LEDS проверок вместо вложенного поиска
+    {
+      blinkPhase = 7U;
+      return;
+    }
+  }
+
+  FastLED.clear();
+  for (uint16_t i = 0U; i < snakeLen; i++)                  // тело с затуханием к хвосту
+  {
+    uint8_t value = 255U - (uint32_t)i * 165U / snakeLen;
+    drawPixelXY(snakeCells[i] % boardWidth, snakeCells[i] / boardWidth, CHSV(hue, 255U, value));
+  }
+  drawPixelXY(foodCell % boardWidth, foodCell / boardWidth,
+              CHSV(hue + 128U, 255U, 120U + (sin8(framePulse) >> 1)));
+}
+
+// ============= ЭФФЕКТ МАРИО ===============
+// палитра спрайтов: 0 - прозрачный, 1 - красный (кепка/рукава), 2 - кожа,
+// 3 - тёмно-коричневый (волосы/глаз/ботинки), 4 - синий (комбинезон),
+// 5 - тело врага (тёмно-зелёный для контраста с тёплыми цветами персонажа
+// и кирпичей), 6 - ноги врага, 7 - светлые глаза врага
+static const CRGB marioPalette[] = {
+  CRGB::Black, CRGB(200U, 30U, 10U), CRGB(230U, 130U, 50U), CRGB(60U, 25U, 6U),
+  CRGB(30U, 70U, 230U), CRGB(15U, 110U, 25U), CRGB(6U, 45U, 10U), CRGB(150U, 230U, 80U)
+};
+
+// персонаж 7x8, смотрит вправо; кадры: 0 - шаг, 1 - ноги вместе, 2 - прыжок
+static const uint8_t marioSprite[3][8][7] PROGMEM = {
+  {{0,0,1,1,1,1,0},   // кепка
+   {0,1,1,1,1,1,1},   // козырёк вперёд
+   {0,3,2,2,3,2,0},   // волосы, лицо, глаз
+   {0,3,2,2,2,2,0},
+   {0,1,4,4,4,1,0},   // руки-рукава, грудь комбинезона
+   {0,0,4,4,4,0,0},
+   {0,4,4,0,0,4,0},   // ноги в широком шаге
+   {3,3,0,0,0,3,3}},
+  {{0,0,1,1,1,1,0},
+   {0,1,1,1,1,1,1},
+   {0,3,2,2,3,2,0},
+   {0,3,2,2,2,2,0},
+   {0,1,4,4,4,1,0},
+   {0,0,4,4,4,0,0},
+   {0,0,4,4,0,0,0},   // ноги вместе (фаза пробега)
+   {0,0,3,3,0,0,0}},
+  {{0,0,1,1,1,1,0},
+   {0,1,1,1,1,1,1},
+   {0,3,2,2,3,2,0},
+   {0,3,2,2,2,2,0},
+   {0,1,4,4,4,1,0},
+   {0,0,4,4,4,0,0},
+   {0,4,4,0,4,4,0},   // прыжок - ноги разведены
+   {3,3,0,0,0,3,3}}
+};
+
+// Упрощённый персонаж 4x5 для матриц высотой 8..13 пикселей.
+// Полный спрайт на таких матрицах обрезался вместе с кепкой и прыжком.
+static const uint8_t marioMiniSprite[3][5][4] PROGMEM = {
+  {{0,1,1,1},
+   {3,2,3,0},
+   {1,4,4,1},
+   {4,0,4,0},
+   {3,0,0,3}},
+  {{0,1,1,1},
+   {3,2,3,0},
+   {1,4,4,1},
+   {0,4,4,0},
+   {0,3,3,0}},
+  {{0,1,1,1},
+   {3,2,3,0},
+   {1,4,4,1},
+   {4,0,4,0},
+   {3,0,0,3}}
+};
+
+// враг-гриб 3x3, два кадра переваливающейся походки
+static const uint8_t goombaSprite[2][3][3] PROGMEM = {
+  {{5,5,5},
+   {7,5,7},
+   {6,0,6}},
+  {{5,5,5},
+   {7,5,7},
+   {0,6,0}}
+};
+
+// точка с заворотом по замкнутой горизонтали цилиндра
+void marioDrawPix(int16_t x, int16_t y, CRGB color)
+{
+  if (WIDTH == 0U || y < 0 || y >= HEIGHT) return;
+  x %= (int16_t)WIDTH;
+  if (x < 0) x += WIDTH;
+  drawPixelXY(x, y, color);
+}
+
+void marioDrawCell(int16_t x, int16_t y, uint8_t cellSize, CRGB color)
+{
+  for (uint8_t dy = 0U; dy < cellSize; dy++)
+  {
+    for (uint8_t dx = 0U; dx < cellSize; dx++)
+    {
+      marioDrawPix(x + dx, y + dy, color);
+    }
+  }
+}
+
+void marioDrawPlayer(uint8_t frame, int16_t x, int16_t bottomY, uint8_t cellSize, bool compact)
+{
+  if (compact)
+  {
+    for (uint8_t r = 0U; r < 5U; r++)
+    {
+      for (uint8_t c = 0U; c < 4U; c++)
+      {
+        uint8_t idx = pgm_read_byte(&marioMiniSprite[frame][r][c]);
+        if (idx) marioDrawCell(x + (int16_t)c * cellSize,
+                               bottomY + (int16_t)(4U - r) * cellSize,
+                               cellSize, marioPalette[idx]);
+      }
+    }
+  }
+  else
+  {
+    for (uint8_t r = 0U; r < 8U; r++)
+    {
+      for (uint8_t c = 0U; c < 7U; c++)
+      {
+        uint8_t idx = pgm_read_byte(&marioSprite[frame][r][c]);
+        if (idx) marioDrawCell(x + (int16_t)c * cellSize,
+                               bottomY + (int16_t)(7U - r) * cellSize,
+                               cellSize, marioPalette[idx]);
+      }
+    }
+  }
+}
+
+void marioDrawEnemy(uint8_t frame, int16_t x, int16_t bottomY, uint8_t cellSize)
+{
+  for (uint8_t r = 0U; r < 3U; r++)
+  {
+    for (uint8_t c = 0U; c < 3U; c++)
+    {
+      uint8_t idx = pgm_read_byte(&goombaSprite[frame][r][c]);
+      if (idx) marioDrawCell(x + (int16_t)c * cellSize,
+                             bottomY + (int16_t)(2U - r) * cellSize,
+                             cellSize, marioPalette[idx]);
+    }
+  }
+}
+
+#define MARIO_PARTICLES (8U)
+
+void marioRoutine()
+{
+  static float obsX;                                        // левый край препятствия относительно персонажа
+  static float groundShift;                                 // фаза бегущих меток земли
+  static uint8_t obsType;                                   // 0 - кирпичи, 1 - враг
+  static uint8_t brokenIdx;                                 // разбитый кирпич (0xFF - оба целы)
+  static float partX[MARIO_PARTICLES], partY[MARIO_PARTICLES];
+  static float partVX[MARIO_PARTICLES], partVY[MARIO_PARTICLES];
+  static uint16_t partLifeMs[MARIO_PARTICLES];
+  static uint32_t lastFrameMs = 0U;
+  static uint8_t previousWidth = 0U;
+  static uint8_t previousHeight = 0U;
+  static uint8_t previousCellSize = 0U;
+  static bool previousCompact = false;
+
+  FPSdelay = 40U;                                           // около 25 FPS; движение считается по реальному времени
+
+  const uint8_t width = WIDTH;
+  const uint8_t height = HEIGHT;
+  if (width == 0U || height == 0U || width > WIDTH_MAX || height > HEIGHT_MAX)
+  {
+    loadingFlag = false;
+    FastLED.clear();
+    return;
+  }
+
+  // 8..13 строк: отдельный компактный спрайт. Начиная с 14 строк полный
+  // спрайт увеличивается целым коэффициентом, если хватает также ширины.
+  const bool compact = height < 14U;
+  uint8_t cellSize = 1U;
+  if (!compact)
+  {
+    uint8_t scaleByHeight = max((uint8_t)1U, (uint8_t)(height / 14U));
+    uint8_t scaleByWidth = max((uint8_t)1U, (uint8_t)(width / 8U));
+    cellSize = min(scaleByHeight, scaleByWidth);
+  }
+
+  const uint8_t groundHeight = cellSize;
+  const uint8_t playerRows = compact ? 5U : 8U;
+  const uint8_t playerBottom = groundHeight;
+  const uint8_t playerTop = playerBottom + playerRows * cellSize - 1U;
+  const uint8_t availableJump = (height - 1U > playerTop) ? (height - 1U - playerTop) : 0U;
+  const uint8_t blockJump = compact ? min((uint8_t)3U, availableJump) : 4U * cellSize;
+  const uint8_t enemyJump = compact ? min((uint8_t)(blockJump + cellSize), availableJump) : 5U * cellSize;
+  const uint8_t brickBaseY = compact ? playerTop + blockJump : 12U * cellSize;
+  const uint8_t brickCellWidth = compact ? 1U : 2U;
+  const uint8_t brickCellHeight = compact ? 1U : 2U;
+
+  float visibleDistance = (width > 3U * cellSize) ? (float)(width - 3U * cellSize) : (float)(3U * cellSize);
+  if (visibleDistance < 6.0F * cellSize) visibleDistance = 6.0F * cellSize;
+  const float despawnDistance = -5.0F * cellSize;
+  const uint8_t spawnSpan = max((uint8_t)(width / 2U), (uint8_t)(6U * cellSize));
+
+  auto spawnObstacle = [&]()
+  {
+    obsX = visibleDistance + 3.0F * cellSize + random8(spawnSpan);
+    obsType = (random8(10U) < 4U) ? 0U : 1U;
+    brokenIdx = 0xFFU;
+  };
+
+  const uint32_t now = millis();
+  const bool effectLoading = loadingFlag;
+  if (effectLoading)
+  {
+    #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+      if (selectedSettings){
+        setModeSettings(10U + random8(81U), 60U + random8(160U));
+      }
+    #endif
+
+    loadingFlag = false;
+  }
+
+  if (effectLoading || previousWidth != width || previousHeight != height ||
+      previousCellSize != cellSize || previousCompact != compact)
+  {
+    previousWidth = width;
+    previousHeight = height;
+    previousCellSize = cellSize;
+    previousCompact = compact;
+    spawnObstacle();
+    groundShift = 0.0F;
+    memset(partLifeMs, 0, sizeof(partLifeMs));
+    lastFrameMs = now;
+  }
+
+  const uint8_t positionScale = (modes[currentMode].Scale > 100U) ? 100U : modes[currentMode].Scale;
+  const uint8_t cx = (uint16_t)positionScale * (width - 1U) / 100U;
+
+  uint32_t elapsedMs = now - lastFrameMs;
+  lastFrameMs = now;
+  if (elapsedMs > 200U) elapsedMs = 200U;                   // не допускаем скачка после блокировки других задач
+  const float deltaSeconds = elapsedMs * 0.001F;
+
+  // Скорость задаёт пиксели в секунду. Она больше не применяется одновременно
+  // и к задержке кадра, и к смещению, как было раньше.
+  const float worldSpeed = (1.5F + modes[currentMode].Speed * 0.08F) * cellSize;
+  const float scrollStep = worldSpeed * deltaSeconds;
+  obsX -= scrollStep;
+  groundShift += scrollStep;
+  const float groundPeriod = 4.0F * cellSize;
+  while (groundShift >= groundPeriod) groundShift -= groundPeriod;
+
+  if (obsX < despawnDistance) spawnObstacle();
+
+  // Прыжок зависит от расстояния до препятствия, поэтому остаётся синхронным
+  // при любой скорости и любом времени между кадрами.
+  float jumpArc = 0.0F;
+  if (obsType == 0U)
+  {
+    const float jumpStart = 5.5F * cellSize;
+    const float jumpEnd = -2.5F * cellSize;
+    if (blockJump > 0U && obsX < jumpStart && obsX > jumpEnd)
+    {
+      float p = (jumpStart - obsX) / (jumpStart - jumpEnd);
+      jumpArc = 4.0F * blockJump * p * (1.0F - p);
+    }
+  }
+  else
+  {
+    const float jumpStart = 8.5F * cellSize;
+    const float jumpEnd = -5.0F * cellSize;
+    if (enemyJump > 0U && obsX < jumpStart && obsX > jumpEnd)
+    {
+      float p = (jumpStart - obsX) / (jumpStart - jumpEnd);
+      jumpArc = 4.0F * enemyJump * p * (1.0F - p);
+    }
+  }
+  int16_t jumpOffset = (int16_t)(jumpArc + 0.5F);
+
+  uint8_t breakThreshold = (blockJump > cellSize / 2U) ? blockJump - cellSize / 2U : blockJump;
+  if (obsType == 0U && brokenIdx == 0xFFU && blockJump > 0U && jumpOffset >= breakThreshold)
+  {
+    brokenIdx = (obsX >= 1.5F * cellSize) ? 0U : 1U;
+    float baseX = obsX + (float)brokenIdx * brickCellWidth * cellSize;
+    uint8_t spawned = 0U;
+    const uint8_t fragments = compact ? 2U : 4U;
+    for (uint8_t i = 0U; i < MARIO_PARTICLES && spawned < fragments; i++)
+    {
+      if (partLifeMs[i] > 0U) continue;
+      uint8_t dx = spawned & 0x01U;
+      uint8_t dy = spawned >> 1;
+      partX[i] = baseX + (float)dx * cellSize;
+      partY[i] = brickBaseY + (float)dy * cellSize;
+      partVX[i] = (dx ? 8.5F : -8.5F) * cellSize
+                + ((int16_t)random8(41U) - 20) * 0.12F * cellSize;
+      partVY[i] = (14.0F + dy * 8.0F + random8(20U) * 0.25F) * cellSize;
+      partLifeMs[i] = 900U;
+      spawned++;
+    }
+  }
+
+  for (uint8_t i = 0U; i < MARIO_PARTICLES; i++)
+  {
+    if (partLifeMs[i] == 0U) continue;
+    if (elapsedMs >= partLifeMs[i]) partLifeMs[i] = 0U;
+    else partLifeMs[i] -= elapsedMs;
+
+    partX[i] += (partVX[i] - worldSpeed) * deltaSeconds;
+    partY[i] += partVY[i] * deltaSeconds;
+    partVY[i] -= 110.0F * cellSize * deltaSeconds;
+    if (partY[i] < groundHeight || partLifeMs[i] == 0U) partLifeMs[i] = 0U;
+  }
+
+  FastLED.clear();
+
+  uint8_t groundPhase = (uint8_t)groundShift;
+  const uint8_t groundPeriodPx = 4U * cellSize;
+  for (uint8_t y = 0U; y < groundHeight; y++)
+  {
+    for (uint8_t x = 0U; x < width; x++)
+    {
+      bool marker = ((x + groundPhase) % groundPeriodPx) < cellSize;
+      drawPixelXY(x, y, marker ? CRGB(70U, 35U, 10U) : CRGB(14U, 7U, 2U));
+    }
+  }
+
+  if (obsX <= visibleDistance && obsX >= despawnDistance)
+  {
+    int16_t obstacleX = cx + (int16_t)floorf(obsX + 0.5F);
+    if (obsType == 0U)
+    {
+      for (uint8_t b = 0U; b < 2U; b++)
+      {
+        if (b == brokenIdx) continue;
+        CRGB color = b ? CRGB(140U, 60U, 16U) : CRGB(210U, 95U, 25U);
+        for (uint8_t dy = 0U; dy < brickCellHeight; dy++)
+        {
+          for (uint8_t dx = 0U; dx < brickCellWidth; dx++)
+          {
+            marioDrawCell(obstacleX + (int16_t)(b * brickCellWidth + dx) * cellSize,
+                           brickBaseY + (int16_t)dy * cellSize, cellSize, color);
+          }
+        }
+      }
+    }
+    else
+    {
+      uint8_t enemyFrame = (now / 160U) & 0x01U;
+      marioDrawEnemy(enemyFrame, obstacleX, groundHeight, cellSize);
+    }
+  }
+
+  for (uint8_t i = 0U; i < MARIO_PARTICLES; i++)
+  {
+    if (partLifeMs[i] == 0U) continue;
+    CRGB color = CRGB(210U, 95U, 25U);
+    color.nscale8((uint8_t)((uint32_t)partLifeMs[i] * 255U / 900U));
+    uint8_t fragmentSize = max((uint8_t)1U, (uint8_t)(cellSize / 2U));
+    marioDrawCell(cx + (int16_t)floorf(partX[i] + 0.5F),
+                  (int16_t)(partY[i] + 0.5F), fragmentSize, color);
+  }
+
+  uint8_t frame = (jumpOffset > 0) ? 2U : ((now / 120U) & 0x01U);
+  marioDrawPlayer(frame, cx, playerBottom + jumpOffset, cellSize, compact);
 }
