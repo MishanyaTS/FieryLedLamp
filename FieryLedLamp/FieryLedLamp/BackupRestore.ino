@@ -128,7 +128,7 @@ static bool mergeJsonFileWithTmp(const char* tmpPath, const char* dstPath) {
 static const size_t BACKUP_CFG_FILE_COUNT = sizeof(BACKUP_CFG_FILES) / sizeof(BACKUP_CFG_FILES[0]);
 
 static bool createConfigBackupZip();
-static bool restoreConfigFromZip(const char* zipPath);
+static bool restoreConfigFromZip(const char* zipPath, bool useEepromEffectFallback);
 
 static const char* CFG_BACKUP_PART_LABEL = "backup";
 static const char* CFG_BACKUP_NVS_NS = "cfgbackup";
@@ -298,7 +298,7 @@ bool saveConfigBackupToPartition(bool setPendingFlag) {
   return saveZipToBackupPartition(CFG_BACKUP_ZIP_PATH, setPendingFlag, F("Настройки сохранены в раздел backup"));
 }
 
-bool restoreConfigBackupFromPartition() {
+bool restoreConfigBackupFromPartition(bool useEepromEffectFallback) {
   const esp_partition_t* part = findConfigBackupPartition();
   if (!part) {
     cfgRestoreMessage = F("Раздел backup не найден");
@@ -362,7 +362,7 @@ bool restoreConfigBackupFromPartition() {
     return false;
   }
 
-  bool ok = restoreConfigFromZip(CFG_RESTORE_ZIP_PATH);
+  bool ok = restoreConfigFromZip(CFG_RESTORE_ZIP_PATH, useEepromEffectFallback);
   LittleFS.remove(CFG_RESTORE_ZIP_PATH);
   return ok;
 }
@@ -375,6 +375,14 @@ static int backupFindConfigIndexByZipName(const String &name) {
     if (slash >= 0 && name.substring(slash + 1) == target) return (int)i;
     int bslash = name.lastIndexOf('\\');
     if (bslash >= 0 && name.substring(bslash + 1) == target) return (int)i;
+  }
+  return -1;
+}
+
+static int backupFindConfigIndexByFsPath(const char* path) {
+  if (!path) return -1;
+  for (size_t i = 0; i < BACKUP_CFG_FILE_COUNT; i++) {
+    if (strcmp(BACKUP_CFG_FILES[i].fsPath, path) == 0) return (int)i;
   }
   return -1;
 }
@@ -642,7 +650,7 @@ static void sendBackupRestorePage(const String &msg = String(), bool ok = false)
   HTTP.send(200, F("text/html"), html);
 }
 
-static bool restoreConfigFromZip(const char* zipPath) {
+static bool restoreConfigFromZip(const char* zipPath, bool useEepromEffectFallback) {
   File in = LittleFS.open(zipPath, "r");
   if (!in) {
     cfgRestoreMessage = F("Архив не открыт");
@@ -771,6 +779,20 @@ static bool restoreConfigFromZip(const char* zipPath) {
   }
 
   in.close();
+
+  const int effectCfgIndex = backupFindConfigIndexByFsPath(EFFECT_SETTINGS_FILE);
+  if (effectCfgIndex >= 0 &&
+      (gotFiles[effectCfgIndex] || useEepromEffectFallback)) {
+    const bool useEeprom = !gotFiles[effectCfgIndex] && useEepromEffectFallback;
+    if (!mergeEffectSettingsForRestore(tmpPaths[effectCfgIndex].c_str(),
+                                       EFFECT_SETTINGS_FILE,
+                                       useEeprom)) {
+      cfgRestoreMessage = F("Ошибка проверки и слияния effect.ini");
+      for (size_t j = 0; j < BACKUP_CFG_FILE_COUNT; j++) LittleFS.remove(tmpPaths[j]);
+      return false;
+    }
+    gotFiles[effectCfgIndex] = true;
+  }
 
   bool appliedAny = false;
   for (size_t i = 0; i < BACKUP_CFG_FILE_COUNT; i++) {

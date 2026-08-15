@@ -5,6 +5,8 @@
 
 extern uint8_t tft_clock_color;
 extern uint8_t tft_weather_color;
+extern uint8_t tft_day_brightness;
+extern uint8_t tft_night_brightness;
 extern bool     tft_ticker_on;
 extern uint8_t  tft_ticker_color;
 extern uint16_t tft_ticker_speed;
@@ -651,10 +653,9 @@ if (view == TFT_VIEW_CLOCK) {
 }
 
 static inline uint8_t tftGetDayNightTarget() {
-  if (!timeSynched) return 255U;
-
-  const uint8_t dayB  = (DAY_HOURS_BRIGHTNESS  > 255U) ? 255U : (uint8_t)DAY_HOURS_BRIGHTNESS;
-  const uint8_t nightB= (NIGHT_HOURS_BRIGHTNESS> 255U) ? 255U : (uint8_t)NIGHT_HOURS_BRIGHTNESS;
+  const uint8_t dayB = brightnessPercentToByte(tft_day_brightness);
+  const uint8_t nightB = brightnessPercentToByte(tft_night_brightness);
+  if (!timeSynched) return dayB;
 
   if (NIGHT_HOURS_START >= NIGHT_HOURS_STOP) {
     if (thisTime >= NIGHT_HOURS_START || thisTime <= NIGHT_HOURS_STOP) return nightB;

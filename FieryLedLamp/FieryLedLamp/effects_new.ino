@@ -537,12 +537,16 @@ uint8_t arrow_play_mode_count_orig[6]; // Сколько раз проигрыв
 void arrowsRoutine() {
 if (loadingFlag) {
 loadingFlag = false;
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+if (selectedSettings) setModeSettings(1U + random8(100U), 140U + random8(101U));
+#endif
 //modeCode = MC_ARROWS;
 FastLED.clear();
 arrow_complete = false;
 // arrow_mode_orig = (specialTextEffectParam >= 0) ? specialTextEffectParam : getEffectScaleParamValue2(MC_ARROWS);
+arrow_mode_orig = constrain(((modes[currentMode].Scale - 1U) / 20U) + 1U, 1U, 5U);
 
-arrow_mode = (arrow_mode_orig == 0 || arrow_mode_orig > 5) ? random8(1,5) : arrow_mode_orig;
+arrow_mode = (arrow_mode_orig == 0 || arrow_mode_orig > 5) ? random8(1,6) : arrow_mode_orig;
 arrow_play_mode_count_orig[0] = 0;
 arrow_play_mode_count_orig[1] = 4; // 4 фазы - все стрелки показаны по кругу один раз - переходить к следующему ->
 arrow_play_mode_count_orig[2] = 4; // 2 фазы - гориз к центру (1), затем верт к центру (2) - обе фазы повторить по 2 раза -> 4
@@ -564,7 +568,7 @@ CHSV color;
 
 // движение стрелки - cлева направо
 if ((arrow_direction & 0x01) > 0) {
-color = CHSV(arrow_hue[0], 255, modes[currentMode].Brightness);
+color = CHSV(arrow_hue[0], 255, effectBrightnessToFastLED(modes[currentMode].Brightness));
 for (int8_t x = 0; x <= 4; x++) {
 for (int8_t y = 0; y <= x; y++) {
 if (arrow_x[0] - x >= 0 && arrow_x[0] - x <= stop_x[0]) {
@@ -579,7 +583,7 @@ arrow_x[0]++;
 
 // движение стрелки - cнизу вверх
 if ((arrow_direction & 0x02) > 0) {
-color = CHSV(arrow_hue[1], 255, modes[currentMode].Brightness);
+color = CHSV(arrow_hue[1], 255, effectBrightnessToFastLED(modes[currentMode].Brightness));
 for (int8_t y = 0; y <= 4; y++) {
 for (int8_t x = 0; x <= y; x++) {
 if (arrow_y[1] - y >= 0 && arrow_y[1] - y <= stop_y[1]) {
@@ -594,7 +598,7 @@ arrow_y[1]++;
 
 // движение стрелки - cправа налево
 if ((arrow_direction & 0x04) > 0) {
-color = CHSV(arrow_hue[2], 255, modes[currentMode].Brightness);
+color = CHSV(arrow_hue[2], 255, effectBrightnessToFastLED(modes[currentMode].Brightness));
 for (int8_t x = 0; x <= 4; x++) {
 for (int8_t y = 0; y <= x; y++) {
 if (arrow_x[2] + x >= stop_x[2] && arrow_x[2] + x < WIDTH) {
@@ -609,7 +613,7 @@ arrow_x[2]--;
 
 // движение стрелки - cверху вниз
 if ((arrow_direction & 0x08) > 0) {
-color = CHSV(arrow_hue[3], 255, modes[currentMode].Brightness);
+color = CHSV(arrow_hue[3], 255, effectBrightnessToFastLED(modes[currentMode].Brightness));
 for (int8_t y = 0; y <= 4; y++) {
 for (int8_t x = 0; x <= y; x++) {
 if (arrow_y[3] + y >= stop_y[3] && arrow_y[3] + y < HEIGHT) {
@@ -645,7 +649,7 @@ if (arrow_mode_orig == 0) {
 arrow_play_mode_count[1]--;
 if (arrow_play_mode_count[1] == 0) {
 arrow_play_mode_count[1] = arrow_play_mode_count_orig[1];
-arrow_mode = random8(1,5);
+arrow_mode = random8(1,6);
 arrow_change_mode = true;
 }
 }
@@ -670,7 +674,7 @@ if (arrow_mode_orig == 0) {
 arrow_play_mode_count[2]--;
 if (arrow_play_mode_count[2] == 0) {
 arrow_play_mode_count[2] = arrow_play_mode_count_orig[2];
-arrow_mode = random8(1,5);
+arrow_mode = random8(1,6);
 arrow_change_mode = true;
 }
 }
@@ -694,7 +698,7 @@ if (arrow_mode_orig == 0) {
 arrow_play_mode_count[3]--;
 if (arrow_play_mode_count[3] == 0) {
 arrow_play_mode_count[3] = arrow_play_mode_count_orig[3];
-arrow_mode = random8(1,5);
+arrow_mode = random8(1,6);
 arrow_change_mode = true;
 }
 }
@@ -720,7 +724,7 @@ if (arrow_mode_orig == 0) {
 arrow_play_mode_count[4]--;
 if (arrow_play_mode_count[4] == 0) {
 arrow_play_mode_count[4] = arrow_play_mode_count_orig[4];
-arrow_mode = random8(1,5);
+arrow_mode = random8(1,6);
 arrow_change_mode = true;
 }
 }
@@ -743,7 +747,7 @@ if (arrow_mode_orig == 0) {
 arrow_play_mode_count[5]--;
 if (arrow_play_mode_count[5] == 0) {
 arrow_play_mode_count[5] = arrow_play_mode_count_orig[5];
-arrow_mode = random8(1,5);
+arrow_mode = random8(1,6);
 arrow_change_mode = true;
 }
 }
@@ -929,7 +933,7 @@ void OilPaints() {
     deltaHue = hue;                                                   // set last color
     hue += 6 * divider;                                               // new color
     hue2 = 255;                                                       // restore brightness
-    deltaHue2 = 80 - floor(log(modes[currentMode].Brightness) * 6);   // min bright
+    deltaHue2 = 80 - floor(log(effectBrightnessToFastLED(modes[currentMode].Brightness)) * 6);   // min bright
     entry_point = random8(WIDTH);                                     // start X position
     trackingObjectHue[entry_point] = hue;                             // set start position
     drawPixelXY(entry_point,  HEIGHT - 2, CHSV(hue, 255U, 255U));

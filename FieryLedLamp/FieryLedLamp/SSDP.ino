@@ -1,8 +1,12 @@
 void SSDP_init(void) {
   // SSDP дескриптор
-  HTTP.on(F("/description.xml"), HTTP_GET, []() {
-    SSDP.schema(HTTP.client());
-  });
+  static bool schemaRouteRegistered = false;
+  if (!schemaRouteRegistered) {
+    HTTP.on(F("/description.xml"), HTTP_GET, []() {
+      SSDP.schema(HTTP.client());
+    });
+    schemaRouteRegistered = true;
+  }
 
   LAMP_NAME = jsonRead(configSetup, "SSDP");
   SSDP.setName(jsonRead(configSetup, "SSDP"));

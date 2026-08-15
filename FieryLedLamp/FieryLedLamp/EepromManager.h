@@ -5,8 +5,12 @@
  * Используются адреса:
  * Начало    Длина    Описание
  * 0-63      64       Пароль wi-fi вашего роутера
- * 64        1        Признак первого запуска
- * 65-79     15       Специальные настройки
+ * 64        1        Сигнатура блока параметров эффектов
+ * 65        1        Версия формата
+ * 66        1        Количество эффектов
+ * 67        1        Резерв
+ * 68-71     4        CRC32 массива modes[]
+ * 72-79     8        Резерв
  * ***************** массив modes (эффекты)
  * 80-82     3        режим №1:  яркость, скорость, масштаб (по одному байту)
  * 83-85     3        режим №2:  яркость, скорость, масштаб (по одному байту)
@@ -15,53 +19,129 @@
 */
 
 
+static_assert(sizeof(ModeType) == EEPROM_MODE_STRUCT_SIZE,
+              "EEPROM layout must match ModeType");
+
 class EepromManager
 {
   public:
-    static void InitEepromSettings(ModeType modes[], void (*restoreDefaultSettings)())
+    static bool InitEepromSettings(ModeType destination[],
+                                   const ModeType defaults[],
+                                   bool defaultsValid)
     {
       EEPROM.begin(EEPROM_TOTAL_BYTES_USED);
       delay(50);
 
-      // записываем в EEPROM начальное состояние настроек, если их там ещё нет
-      if (EEPROM.read(EEPROM_FIRST_RUN_ADDRESS) != EEPROM_FIRST_RUN_MARK)
+      if (EepromGet(destination)) return true;
+      if (MigrateLegacySettings(destination)) return true;
+      if (defaultsValid)
       {
-        restoreDefaultSettings(); // а почему бы нам не восстановить настройки по умолчанию в этом месте?
-
-        EEPROM.write(EEPROM_FIRST_RUN_ADDRESS, EEPROM_FIRST_RUN_MARK);
-        EEPROM.commit();
-
-        for (uint8_t i = 0; i < MODE_AMOUNT; i++)
-        {
-          EEPROM.put(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i, modes[i]);
-          EEPROM.commit();
-        }
+        memcpy(destination, defaults, sizeof(ModeType) * MODE_AMOUNT);
+        return EepromPut(destination);
       }
-      else
-      // инициализируем настройки лампы значениями из EEPROM
+
+      FillSafeSettings(destination);
+      return false;
+    }
+
+    static bool EepromGet(ModeType destination[]) {
+      if (EEPROM.read(EEPROM_EFFECTS_MAGIC_ADDRESS) != EEPROM_EFFECTS_MAGIC ||
+          EEPROM.read(EEPROM_EFFECTS_VERSION_ADDRESS) != EEPROM_EFFECTS_LAYOUT_VERSION ||
+          EEPROM.read(EEPROM_EFFECTS_COUNT_ADDRESS) != (uint8_t)MODE_AMOUNT)
+      {
+        return false;
+      }
+
+      ModeType loaded[MODE_AMOUNT];
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       {
-        EEPROM.get(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i, modes[i]);
-      }
-      if (EEPROM.read(EEPROM_FIRST_RUN_ADDRESS + 2) != EEPROM_FIRST_RUN_MARK)
-      {
-             esp_task_wdt_reset();
-        }     
+        EEPROM.get(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i,
+                   loaded[i]);
       }
 
-    static void EepromGet(ModeType modes[]) {
+      uint32_t storedCrc = 0U;
+      EEPROM.get(EEPROM_EFFECTS_CRC_ADDRESS, storedCrc);
+      if (storedCrc != EffectsCrc(loaded) || !SettingsAreValid(loaded))
+      {
+        return false;
+      }
+
+      memcpy(destination, loaded, sizeof(loaded));
+      return true;
+    }
+
+    static bool EepromPut(ModeType source[]) {
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       {
-        EEPROM.get(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i, modes[i]);
+        NormalizeMode(source[i]);
+        EEPROM.put(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i,
+                   source[i]);
+      }
+
+      const uint32_t crc = EffectsCrc(source);
+      EEPROM.put(EEPROM_EFFECTS_CRC_ADDRESS, crc);
+      EEPROM.write(EEPROM_EFFECTS_COUNT_ADDRESS, (uint8_t)MODE_AMOUNT);
+      EEPROM.write(EEPROM_EFFECTS_VERSION_ADDRESS, EEPROM_EFFECTS_LAYOUT_VERSION);
+      EEPROM.write(EEPROM_EFFECTS_MAGIC_ADDRESS, EEPROM_EFFECTS_MAGIC);
+
+      return EEPROM.commit();
+    }
+
+    static void NormalizeMode(ModeType &mode) {
+      mode.Brightness = constrain(mode.Brightness, 1, EFFECT_BRIGHTNESS_MAX);
+      if (mode.Speed == 0U) mode.Speed = 1U;
+      if (mode.Scale == 0U) mode.Scale = 1U;
+    }
+
+    static void FillSafeSettings(ModeType destination[]) {
+      for (uint8_t i = 0; i < MODE_AMOUNT; i++)
+      {
+        destination[i].Brightness = 10U;
+        destination[i].Speed = 128U;
+        destination[i].Scale = 50U;
       }
     }
 
-    static void EepromPut(ModeType modes[]) {
+    static uint32_t EffectsCrc(const ModeType source[]) {
+      const uint8_t* data = reinterpret_cast<const uint8_t*>(source);
+      size_t len = sizeof(ModeType) * MODE_AMOUNT;
+      uint32_t crc = 0xFFFFFFFFUL;
+      while (len--)
+      {
+        crc ^= *data++;
+        for (uint8_t i = 0; i < 8U; i++)
+          crc = (crc & 1U) ? ((crc >> 1) ^ 0xEDB88320UL) : (crc >> 1);
+      }
+      return ~crc;
+    }
+
+    static bool SettingsAreValid(const ModeType source[]) {
       for (uint8_t i = 0; i < MODE_AMOUNT; i++)
       {
-          EEPROM.put(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i, modes[i]);
-          EEPROM.commit();
+        if (source[i].Brightness < 1U ||
+            source[i].Brightness > EFFECT_BRIGHTNESS_MAX ||
+            source[i].Speed < 1U || source[i].Scale < 1U)
+        {
+          return false;
+        }
       }
+      return true;
+    }
+
+    static bool MigrateLegacySettings(ModeType destination[]) {
+      if (EEPROM.read(EEPROM_EFFECTS_MAGIC_ADDRESS) != EEPROM_LEGACY_FIRST_RUN_MARK)
+        return false;
+
+      ModeType legacy[MODE_AMOUNT];
+      for (uint8_t i = 0; i < MODE_AMOUNT; i++)
+      {
+        EEPROM.get(EEPROM_MODES_START_ADDRESS + EEPROM_MODE_STRUCT_SIZE * i,
+                   legacy[i]);
+      }
+      if (!SettingsAreValid(legacy)) return false;
+
+      memcpy(destination, legacy, sizeof(legacy));
+      return EepromPut(destination);
     }
 
     struct WifiBackupData {
@@ -131,6 +211,12 @@ class EepromManager
       uint32_t crc = WifiBackupCrc((const uint8_t*)&data, sizeof(data) - sizeof(data.crc32));
       if (crc != data.crc32) return false;
       return true;
+    }
+
+    static bool IsGitHubOtaRestorePending() {
+      WifiBackupData data;
+      return ReadWifiBackupRaw(data) &&
+             data.pending == EEPROM_WIFI_BACKUP_PENDING_MARK;
     }
 
     static void ClearWifiBackupPending() {

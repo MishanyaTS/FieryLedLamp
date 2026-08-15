@@ -4,9 +4,10 @@ void parseUDP()
 
   if (packetSize)
   {
-    int16_t n = Udp.read(packetBuffer, MAX_UDP_BUFFER_SIZE);
+    int16_t n = Udp.read(packetBuffer, MAX_UDP_BUFFER_SIZE - 1);
+    if (n <= 0) return;
     packetBuffer[n] = '\0';
-    strcpy(inputBuffer, packetBuffer);
+    strlcpy(inputBuffer, packetBuffer, sizeof(inputBuffer));
 
     #if GENERAL_DEBUG
     LOG.print(F("Inbound UDP packet: "));
@@ -20,12 +21,12 @@ void parseUDP()
 
     char reply[MAX_UDP_BUFFER_SIZE];
     reply [0] = '\0';
-    processInputBuffer(inputBuffer, reply, true);
+    processInputBuffer(inputBuffer, reply, true, sizeof(reply));
 
     #if USE_MQTT                                          // отправка ответа выполнения команд по MQTT, если разрешено
     if (espMode == 1U)
     {
-      strcpy(MqttManager::mqttBuffer, reply);               // разрешение определяется при выполнении каждой команды отдельно, команды GET, DEB, DISCOVER и OTA, пришедшие по UDP, игнорируются (приходят раз в 2 секунды от приложения)
+      strlcpy(MqttManager::mqttBuffer, reply, sizeof(MqttManager::mqttBuffer)); // ограничиваем ответ размером MQTT-буфера
     }
     #endif
     
@@ -55,7 +56,7 @@ void updateSets()
       #endif
 }
 
-void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutput)
+void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutput, size_t outputBufferSize)
 {
     char buff[MAX_UDP_BUFFER_SIZE], *endToken = NULL;
     String BUFF = String(inputBuffer);
@@ -66,7 +67,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       if ((!timeSynched || !(ntpServerAddressResolved && espMode == 1U)) && ((manualTimeShift + millis() / 1000UL) > (phoneTimeLastSync + GET_TIME_FROM_PHONE * 60U)))
       {// если прошло более 5 минут (GET_TIME_FROM_PHONE 5U), значит, можно парсить время из строки GET
         if (BUFF.length() > 7U){ // пускай будет хотя бы 7
-          memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
+          strlcpy(buff, &inputBuffer[4], sizeof(buff));          // безопасно взять подстроку с 5-го символа
           phoneTimeLastSync = (time_t)atoi(buff);
           manualTimeShift = phoneTimeLastSync - millis() / 1000UL;
           #ifdef WARNING_IF_NO_TIME
@@ -129,7 +130,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
             SetBrightness(modes[currentMode].Brightness);
             loadingFlag = true;
             if (random_on && FavoritesManager::FavoritesRunning)
+            {
                 selectedSettings = 1U;
+                applyPendingRandomEffectSettings();
+            }
             sendCurrent(inputBuffer);
             #if USE_MQTT
             if (espMode == 1U)
@@ -146,8 +150,14 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
     else
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      temp = (uint8_t)atoi(buff);
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
+      const int requestedMode = atoi(buff);
+      if (requestedMode < 0 || requestedMode >= MODE_AMOUNT) {
+        if (generateOutput && outputBuffer && outputBufferSize)
+          strlcpy(outputBuffer, "ERR EFFECT", outputBufferSize);
+        return;
+      }
+      temp = (uint8_t)requestedMode;
       currentMode = temp;
       updateSets();
     jsonWrite(configSetup, "eff_sel", temp);
@@ -164,7 +174,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       #endif
 
         if (random_on && FavoritesManager::FavoritesRunning)
+        {
           selectedSettings = 1U;
+          applyPendingRandomEffectSettings();
+        }
       
       SetBrightness(modes[currentMode].Brightness);
     }
@@ -173,7 +186,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     #if USE_MP3_PLAYER
     else if (!strncmp_P(inputBuffer, PSTR("VOL"), 3))
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
       uint8_t eff_sound_on_tmp = (uint8_t)atoi(buff);
       if (eff_sound_on_tmp)  {
           eff_sound_on = eff_volume = constrain( eff_sound_on_tmp, 1,30 );
@@ -261,9 +274,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("BRI"), 3))
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      modes[currentMode].Brightness = constrain(atoi(buff), 1, 255);
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
+      modes[currentMode].Brightness = constrain(atoi(buff), 1, EFFECT_BRIGHTNESS_MAX);
       jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+      markEffectSettingsChanged();
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -287,9 +301,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("SPD"), 3))
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      modes[currentMode].Speed = atoi(buff);
-      if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
+      modes[currentMode].Speed = constrain(atoi(buff), 1, 255);
+      jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+      markEffectSettingsChanged();
       #if USE_BLYNK_PLUS
       updateRemoteBlynkParams();
       #endif
@@ -302,9 +317,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("SCA"), 3))
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      modes[currentMode].Scale = atoi(buff);
-      if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
+      modes[currentMode].Scale = constrain(atoi(buff), 1, 255);
+      jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+      markEffectSettingsChanged();
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
       #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -340,12 +356,11 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       else {
         ONflag = true;
         jsonWrite(configSetup, "Power", ONflag);
-        EepromManager::EepromGet(modes);
+        restoreEffectSettingsForPowerOn();
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 0);
         updateSets();
         changePower();
-        loadingFlag = true;
         #if USE_MULTIPLE_LAMPS_CONTROL
         repeat_multiple_lamp_control=true;
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -365,6 +380,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
+        saveEffectSettingsNow(false);
         changePower();
         sendCurrent(inputBuffer);
       }
@@ -375,19 +391,15 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         clockTicker_blink();
         #endif
         SetBrightness(modes[currentMode].Brightness);
+        saveEffectSettingsNow(false);
         changePower();
         sendCurrent(inputBuffer);
       }
       else {
         ONflag = false;
-    jsonWrite(configSetup, "Power", ONflag);
-        if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
-        save_file_changes = 7;
-        //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
-        timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
-        Save_File_Changes();
+        jsonWrite(configSetup, "Power", ONflag);
+        persistEffectSettingsBeforePowerOff();
         changePower();
-        loadingFlag = true;
         #if USE_MULTIPLE_LAMPS_CONTROL
         multiple_lamp_control ();
         #endif  //USE_MULTIPLE_LAMPS_CONTROL
@@ -407,30 +419,46 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
 #if USE_MULTIPLE_LAMPS_CONTROL
     else if (!strncmp_P(inputBuffer, PSTR("MULTI"), 5)) { // Управление несколькими лампами
-      uint8_t valid = 0, i = 0;
+      uint8_t valid = 0;
+      size_t i = 0U;
+      bool emptyField = false;
       while (inputBuffer[i])   {   //пакет должен иметь вид MULTI,%U,%U,%U,%U,%U соответственно ON/OFF,№эффекта,яркость,скорость,масштаб или + №текущей папки или + озвучування_on/off, гучнисть
-        if (inputBuffer[i] == ',')  { valid++; } //Проверка на правильность пакета (по количеству запятых)
-        i++;       
+        if (inputBuffer[i] == ',')  {
+          valid++;
+          if (inputBuffer[i + 1U] == ',' || inputBuffer[i + 1U] == '\0')
+            emptyField = true;
+        } //Проверка на правильность пакета (по количеству запятых)
+        i++;
       }
-      if (valid == 5 || valid == 6 || valid == 8)   {   //Если пакет правильный выделяем лексемы,разделённые запятыми, и присваиваем параметрам эффектов
+      if (!emptyField && (valid == 5 || valid == 6 || valid == 8))   {   //Если пакет правильный выделяем лексемы,разделённые запятыми, и присваиваем параметрам эффектов
         char *tmp = strtok (inputBuffer, ","); //Первая лексема MULTI пропускается
         tmp = strtok (NULL, ",");
         bool onflg = false;
+        bool effectSettingsChanged = false;
         if (ONflag != atoi(tmp))   {
-      ONflag = atoi( tmp);
+        ONflag = atoi(tmp) != 0;
         onflg = true;
+        if (ONflag) restoreEffectSettingsForPowerOn();
         //changePower();   // Активация состояния ON/OFF
         }
         tmp = strtok (NULL, ",");
-        if (currentMode != atoi(tmp))   {
-          if (atoi (tmp) < MODE_AMOUNT)   {
-          currentMode = atoi (tmp);     
+        const int incomingMode = atoi(tmp);
+        if (currentMode != incomingMode)   {
+          if (incomingMode >= 0 && incomingMode < MODE_AMOUNT)   {
+          currentMode = (uint8_t)incomingMode;
           tmp = strtok (NULL, ",");
-        modes[currentMode].Brightness = atoi (tmp);
+        const uint8_t incomingBrightness = constrain(atoi(tmp), 1, EFFECT_BRIGHTNESS_MAX);
           tmp = strtok (NULL, ",");
-        modes[currentMode].Speed = atoi (tmp);
+        const uint8_t incomingSpeed = constrain(atoi(tmp), 1, 255);
           tmp = strtok (NULL, ",");
-        modes[currentMode].Scale = atoi (tmp);
+        const uint8_t incomingScale = constrain(atoi(tmp), 1, 255);
+        effectSettingsChanged =
+            modes[currentMode].Brightness != incomingBrightness ||
+            modes[currentMode].Speed != incomingSpeed ||
+            modes[currentMode].Scale != incomingScale;
+        modes[currentMode].Brightness = incomingBrightness;
+        modes[currentMode].Speed = incomingSpeed;
+        modes[currentMode].Scale = incomingScale;
           #if USE_MP3_PLAYER
           if (valid == 8) {
           tmp = strtok (NULL, ",");
@@ -480,18 +508,24 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else   {
             tmp = strtok (NULL, ",");
-            if (modes[currentMode].Brightness != atoi(tmp))   {
-                modes[currentMode].Brightness = atoi (tmp);
+            const uint8_t incomingBrightness = constrain(atoi(tmp), 1, EFFECT_BRIGHTNESS_MAX);
+            if (modes[currentMode].Brightness != incomingBrightness)   {
+                modes[currentMode].Brightness = incomingBrightness;
+                effectSettingsChanged = true;
                 SetBrightness(modes[currentMode].Brightness); //Применение яркости
             }
             tmp = strtok (NULL, ",");
-            if (modes[currentMode].Speed != atoi(tmp))   {
-                modes[currentMode].Speed = atoi (tmp);
+            const uint8_t incomingSpeed = constrain(atoi(tmp), 1, 255);
+            if (modes[currentMode].Speed != incomingSpeed)   {
+                modes[currentMode].Speed = incomingSpeed;
+                effectSettingsChanged = true;
                 loadingFlag = true; // Перезапуск эффекта
             }
             tmp = strtok (NULL, ",");
-                if (modes[currentMode].Scale != atoi(tmp))   {
-                modes[currentMode].Scale = atoi (tmp);
+            const uint8_t incomingScale = constrain(atoi(tmp), 1, 255);
+                if (modes[currentMode].Scale != incomingScale)   {
+                modes[currentMode].Scale = incomingScale;
+                effectSettingsChanged = true;
                 loadingFlag = true; // Перезапуск эффекта
             }
           #if USE_MP3_PLAYER
@@ -533,10 +567,12 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
           }
           #endif // USE_MP3_PLAYER
         }
+        if (effectSettingsChanged) markEffectSettingsChanged();
         if (onflg) {
             #if USE_MP3_PLAYER
             if (ONflag) mp3_folder=effects_folders[currentMode];
             #endif
+            if (!ONflag) persistEffectSettingsBeforePowerOff();
             changePower();   // Активация состояния ON/OFF
         }
  #if GENERAL_DEBUG
@@ -579,7 +615,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
          if (ONflag)   {
          FavoritesManager::FavoritesRunning = 1;
          jsonWrite(configSetup, "cycle_on", 1);
-         EepromManager::EepromPut(modes);
         }
         else {
              FavoritesManager::FavoritesRunning = 0;
@@ -592,7 +627,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         FavoritesManager::FavoritesRunning = 0;
         FavoritesManager::nextModeAt = 0;
         jsonWrite(configSetup, "cycle_on", 0);
-        EepromManager::EepromGet(modes);
       }
       else 
       {
@@ -606,11 +640,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         jsonWrite(configSetup, "disp", FavoritesManager::Dispersion);
         jsonWrite(configSetup, "cycle_allwase", FavoritesManager::UseSavedFavoritesRunning);
         //cycle_get();  // запмсь выбранных эффектов
-        if (FavoritesManager::FavoritesRunning){
-        EepromManager::EepromPut(modes);
-        //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
-        }
-        else EepromManager::EepromGet(modes);
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 2);
     
@@ -636,6 +665,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         //if (otaManager.RequestOtaUpdate()) //по идее, нужен положительный ответ от менеджера
         otaManager.RequestOtaUpdate(); // но если уже был один ответ из двух в прошлый раз, то сейчас второй лучше не проверять
         if (OtaManager::OtaFlag == OtaPhase::InProgress) {
+          if (!ONflag) restoreEffectSettingsForPowerOn();
           currentMode = EFF_MATRIX;                             // принудительное включение режима "Матрица" для индикации перехода в режим обновления по воздуху
           FastLED.clear();
           delay(1);
@@ -675,7 +705,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
       #if USE_MQTT
       if (espMode == 1U)
       {
-        strcpy(MqttManager::mqttBuffer, inputBuffer);
+        strlcpy(MqttManager::mqttBuffer, inputBuffer, sizeof(MqttManager::mqttBuffer));
         MqttManager::needToPublish = true;
       }
       #endif
@@ -684,13 +714,14 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     
     else if (!strncmp_P(inputBuffer, PSTR("GBR"), 3)) // выставляем общую яркость для всех эффектов без сохранения в EEPROM, если приложение присылает такую строку
     {
-      memcpy(buff, &inputBuffer[3], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 4
-      uint8_t ALLbri = constrain(atoi(buff), 1, 255);
+      strlcpy(buff, &inputBuffer[3], sizeof(buff));          // безопасно взять подстроку с 4-го символа
+      uint8_t ALLbri = constrain(atoi(buff), 1, EFFECT_BRIGHTNESS_MAX);
       for (uint8_t i = 0; i < MODE_AMOUNT; i++) {
-        modes[i].Brightness = ALLbri;   
+        modes[i].Brightness = ALLbri;
       }
+      markEffectSettingsChanged();
     jsonWrite(configSetup, "br", ALLbri);
-      FastLED.setBrightness(ALLbri);
+      SetBrightness(ALLbri);
       loadingFlag = true;
       #if USE_MULTIPLE_LAMPS_CONTROL
       repeat_multiple_lamp_control = true;
@@ -702,25 +733,27 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     {
        if (!strncmp_P(inputBuffer, PSTR("RND_0"), 5)) // вернуть настройки по умолчанию текущему эффекту
        {
-         setModeSettings();
-         updateSets();
-         #if USE_MULTIPLE_LAMPS_CONTROL
-         repeat_multiple_lamp_control = true;
-         #endif  //USE_MULTIPLE_LAMPS_CONTROL
+         if (resetCurrentEffectToDefaults()) {
+           SetBrightness(modes[currentMode].Brightness);
+           updateSets();
+           #if USE_MULTIPLE_LAMPS_CONTROL
+           repeat_multiple_lamp_control = true;
+           #endif  //USE_MULTIPLE_LAMPS_CONTROL
+         }
          sendCurrent(inputBuffer);
        }
        else if (!strncmp_P(inputBuffer, PSTR("RND_1"), 5)) // выбрать случайные настройки текущему эффекту
        { // раньше была идея, что будут числа RND_1, RND_2, RND_3 - выбор из предустановленных настроек, но потом всё свелось к единственному варианту случайных настроек
          selectedSettings = 1U;
          updateSets();
+         applyPendingRandomEffectSettings();
          #if USE_MULTIPLE_LAMPS_CONTROL
          repeat_multiple_lamp_control = true;
          #endif  //USE_MULTIPLE_LAMPS_CONTROL
        }
        else if (!strncmp_P(inputBuffer, PSTR("RND_Z"), 5)) // вернуть настройки по умолчанию всем эффектам
        {
-         restoreSettings();
-         selectedSettings = 0U;
+         if (!resetAllEffectsToDefaults()) return;
          updateSets();
          #if USE_MULTIPLE_LAMPS_CONTROL
          repeat_multiple_lamp_control = true;
@@ -762,7 +795,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     else if (!strncmp_P(inputBuffer, PSTR("RUN_"), 4)) {          // Настройка бегущей строки
         if (!strncmp_P(inputBuffer, PSTR("RUN_T"), 5))            // Периодичность вывода (минуты). 0-не выводить; больше 60-выводить постоянно
         {
-            memcpy(buff, &inputBuffer[5], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 6
+            strlcpy(buff, &inputBuffer[5], sizeof(buff));          // безопасно взять подстроку с 6-го символа
             RuninTextOverEffects = (uint8_t)atoi(buff);
             jsonWrite(configSetup, "toe", RuninTextOverEffects);
             bitSet (save_file_changes, 0);
@@ -770,7 +803,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else if (!strncmp_P(inputBuffer, PSTR("RUN_C"), 5))       // Цвет бегущей строки (0-255)
         {
-            memcpy(buff, &inputBuffer[5], strlen(inputBuffer));
+            strlcpy(buff, &inputBuffer[5], sizeof(buff));
             ColorRunningText = (uint8_t)atoi(buff);
             jsonWrite(configSetup, "sct", ColorRunningText);
             bitSet (save_file_changes, 0);
@@ -778,7 +811,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else if (!strncmp_P(inputBuffer, PSTR("RUN_F"), 5))       // фон бегущей строки 0-черный фон; 1-цветный фон
         {
-            memcpy(buff, &inputBuffer[5], strlen(inputBuffer));
+            strlcpy(buff, &inputBuffer[5], sizeof(buff));
             ColorTextFon = (uint8_t)atoi(buff);
             jsonWrite(configSetup, "ctf", ColorTextFon);
             bitSet (save_file_changes, 0);
@@ -786,7 +819,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else if (!strncmp_P(inputBuffer, PSTR("RUN_S"), 5))       // скорость бегущей строки (0-255)
         {
-            memcpy(buff, &inputBuffer[5], strlen(inputBuffer));
+            strlcpy(buff, &inputBuffer[5], sizeof(buff));
             SpeedRunningText = (uint8_t)atoi(buff);
             jsonWrite(configSetup, "spt", SpeedRunningText);
             bitSet (save_file_changes, 0);
@@ -796,10 +829,10 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     
     #ifdef BUTTON_CAN_SET_SLEEP_TIMER
     else if (!strncmp_P(inputBuffer, PSTR("SLEEP"), 5)) { // Таймер сна. SLEEP2 – 10 минут. Иначе – 5 минут
-    memcpy(buff, &inputBuffer[5], strlen(inputBuffer));
+    strlcpy(buff, &inputBuffer[5], sizeof(buff));
     uint8_t temp = (uint8_t)atoi(buff);
     showWarning(CRGB::Blue, 1000, 250U);     // Мигание синим цветом 1 секунду. Мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
-    if (!ONflag) EepromManager::EepromGet(modes);
+    if (!ONflag) restoreEffectSettingsForPowerOn();
     ONflag = true;
     changePower();
     jsonWrite(configSetup, "Power", ONflag);
@@ -830,7 +863,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else
         {
-          memcpy(buff, &inputBuffer[8], strlen(inputBuffer)); // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 9
+          strlcpy(buff, &inputBuffer[8], sizeof(buff));        // безопасно взять подстроку с 9-го символа
           alarms[alarmNum].Time = atoi(buff);
           sendAlarms(inputBuffer);
         }
@@ -839,7 +872,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         #if USE_MQTT
         if (espMode == 1U)
         {
-          strcpy(MqttManager::mqttBuffer, inputBuffer);
+          strlcpy(MqttManager::mqttBuffer, inputBuffer, sizeof(MqttManager::mqttBuffer));
           MqttManager::needToPublish = true;
         }
         #endif
@@ -865,7 +898,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         }
         else
         {
-          memcpy(buff, &inputBuffer[8], strlen(inputBuffer)); // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 9
+          strlcpy(buff, &inputBuffer[8], sizeof(buff));        // безопасно взять подстроку с 9-го символа
           sunsets[sunsetNum].Time = atoi(buff);
           sendSunsets(inputBuffer);
         }
@@ -874,7 +907,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         #if USE_MQTT
         if (espMode == 1U)
         {
-          strcpy(MqttManager::mqttBuffer, inputBuffer);
+          strlcpy(MqttManager::mqttBuffer, inputBuffer, sizeof(MqttManager::mqttBuffer));
           MqttManager::needToPublish = true;
         }
         #endif
@@ -886,7 +919,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("DAWN"), 4))
     {
-      memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
+      strlcpy(buff, &inputBuffer[4], sizeof(buff));          // безопасно взять подстроку с 5-го символа
       dawnMode = atoi(buff) - 1;
       //EepromManager::SaveDawnMode(&dawnMode);
       sendAlarms(inputBuffer);
@@ -901,7 +934,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("SUNS"), 4))
     {
-      memcpy(buff, &inputBuffer[4], strlen(inputBuffer));   // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
+      strlcpy(buff, &inputBuffer[4], sizeof(buff));          // безопасно взять подстроку с 5-го символа
       sunsetMode = atoi(buff) - 1;
       //EepromManager::SaveDawnMode(&dawnMode);
       sendSunsets(inputBuffer);
@@ -916,42 +949,32 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
     
     else if (!strncmp_P(inputBuffer, PSTR("DISCOVER"), 8))  // обнаружение приложением модуля esp в локальной сети
     {
-      if (espMode == 1U)                                    // работает только в режиме WiFi клиента. интересно, зачем было запрещать обнаружение точки доступа?
-      {
-    char lamp_name[LAMP_NAME.length()+1];
-    LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);
-        sprintf_P(inputBuffer, PSTR("IP %u.%u.%u.%u:%u:%s"),
-        WiFi.localIP()[0],
-        WiFi.localIP()[1],
-        WiFi.localIP()[2],
-        WiFi.localIP()[3],
-        ESP_UDP_PORT,
-        lamp_name);
-      }
-      else
-      {
-    char lamp_name[LAMP_NAME.length()+1];
-    LAMP_NAME.toCharArray(lamp_name,LAMP_NAME.length()+1);    
-        sprintf_P(inputBuffer, PSTR("IP %u.%u.%u.%u:%u:%s"),
-        AP_STATIC_IP[0],
-        AP_STATIC_IP[1],
-        AP_STATIC_IP[2],
-        AP_STATIC_IP[3],
-        ESP_UDP_PORT,
-        lamp_name);
-      }
+      // В AP fallback espMode остаётся равен 1, а WiFi.localIP() равен
+      // 0.0.0.0. Сообщаем фактический адрес активного интерфейса.
+      IPAddress activeIp = getActiveLampIP();
+      char lamp_name[LAMP_NAME.length() + 1];
+      LAMP_NAME.toCharArray(lamp_name, LAMP_NAME.length() + 1);
+      snprintf_P(inputBuffer, sizeof(inputBuffer), PSTR("IP %u.%u.%u.%u:%u:%s"),
+        activeIp[0], activeIp[1], activeIp[2], activeIp[3],
+        ESP_UDP_PORT, lamp_name);
     }
 
     else if (!strncmp_P(inputBuffer, PSTR("TMR_"), 4)) { // сокращаем GET и SET для ускорения регулярного цикла
       if (!strncmp_P(inputBuffer, PSTR("TMR_SET"), 7))
       {
+        if (strlen(inputBuffer) < 13U) {
+          inputBuffer[0] = '\0';
+          return;
+        }
         memcpy(buff, &inputBuffer[8], 2);                     // взять подстроку, состоящую из 9 и 10 символов, из строки inputBuffer
+        buff[2] = '\0';
         TimerManager::TimerRunning = (bool)atoi(buff);
 
         memcpy(buff, &inputBuffer[10], 2);                    // взять подстроку, состоящую из 11 и 12 символов, из строки inputBuffer
+        buff[2] = '\0';
         TimerManager::TimerOption = (uint8_t)atoi(buff);
 
-        memcpy(buff, &inputBuffer[12], strlen(inputBuffer));  // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 13
+        strlcpy(buff, &inputBuffer[12], sizeof(buff));         // безопасно взять подстроку с 13-го символа
         TimerManager::TimeToFire = millis() + strtoull(buff, &endToken, 10) * 1000;
 
         TimerManager::TimerHasFired = false;
@@ -970,7 +993,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     else if (!strncmp_P(inputBuffer, PSTR("LIST"), 4)) // передача списка эффектов по запросу от приложения (если поддерживается приложением)
     {
-       memcpy(buff, &inputBuffer[4], strlen(inputBuffer));  // взять подстроку, состоящую последних символов строки inputBuffer, начиная с символа 5
+       strlcpy(buff, &inputBuffer[4], sizeof(buff));         // безопасно взять подстроку с 5-го символа
        switch (atoi(buff))
          {
            case 1U:
@@ -986,16 +1009,6 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
            case 3U:
            {
              EffectList (F("/efflist3"));
-              
-             #if USE_DEFAULT_SETTINGS_RESET
-             // и здесь же после успешной отправки списка эффектов делаем сброс настроек эффектов на значения по умолчанию
-             restoreSettings();
-             updateSets();
-             #if USE_BLYNK_PLUS
-             updateRemoteBlynkParams();
-             #endif
-             #endif
-
              break;
            }
          }
@@ -1070,7 +1083,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
         LOG.println("\n*** Reset to Default ***");
         showWarning(CRGB::Red, 500, 250U);
         esp_task_wdt_reset();
-        setModeSettings();
+        resetAllEffectsToDefaults();
         updateSets();    
         if(FileCopy (F("/default/config.json"), F("/config.json"))) {
             esp_task_wdt_reset();
@@ -1186,20 +1199,36 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 //и в новых тоже появились
     else if (!strncmp_P(inputBuffer, PSTR("SETS"), 4)) // передача настроек эффектов по запросу от приложения (если поддерживается приложением)
     {
-      memcpy(buff, &inputBuffer[4], 1U);  // взять первую циферку из строки inputBuffer, начиная с символа 5
+      if (strlen(inputBuffer) < 5U) {
+        inputBuffer[0] = '\0';
+        return;
+      }
+      memcpy(buff, &inputBuffer[4], 1U);  // взять первую цифру, начиная с 5-го символа
+      buff[1] = '\0';
       switch (atoi(buff))      
       {
         case 1U: // SET
           {
-            memcpy(buff, &inputBuffer[5], strlen(inputBuffer));   // inputBuffer, начиная с символа 6
-            uint8_t eff = getValue(buff, ';', 0).toInt();
-            modes[eff].Brightness = getValue(buff, ';', 1).toInt();
-            modes[eff].Speed = getValue(buff, ';', 2).toInt();
-            modes[eff].Scale = getValue(buff, ';', 3).toInt();
-      jsonWrite(configSetup, "br", modes[eff].Brightness);
-      jsonWrite(configSetup, "sp", modes[eff].Speed);
-      jsonWrite(configSetup, "sc", modes[eff].Scale);
+            strlcpy(buff, &inputBuffer[5], sizeof(buff));          // inputBuffer, начиная с символа 6
+            const int requestedEffect = getValue(buff, ';', 0).toInt();
+            if (requestedEffect < 0 || requestedEffect >= MODE_AMOUNT) return;
+            const uint8_t eff = (uint8_t)requestedEffect;
+            const uint8_t newBrightness = constrain(
+                getValue(buff, ';', 1).toInt(), 1, EFFECT_BRIGHTNESS_MAX);
+            const uint8_t newSpeed = constrain(
+                getValue(buff, ';', 2).toInt(), 1, 255);
+            const uint8_t newScale = constrain(
+                getValue(buff, ';', 3).toInt(), 1, 255);
+            if (modes[eff].Brightness != newBrightness ||
+                modes[eff].Speed != newSpeed || modes[eff].Scale != newScale)
+            {
+              modes[eff].Brightness = newBrightness;
+              modes[eff].Speed = newSpeed;
+              modes[eff].Scale = newScale;
+              markEffectSettingsChanged();
+            }
             if (eff == currentMode) {
+              syncCurrentEffectToConfig();
               updateSets();
               #if USE_BLYNK_PLUS
               updateRemoteBlynkParams();
@@ -1241,7 +1270,7 @@ void processInputBuffer(char *inputBuffer, char *outputBuffer, bool generateOutp
 
     if (generateOutput)                                     // если запрошен вывод ответа выполнения команд, копируем его в исходящий буфер
     {
-      strcpy(outputBuffer, inputBuffer);
+      if (outputBufferSize > 0U) strlcpy(outputBuffer, inputBuffer, outputBufferSize);
     }
     inputBuffer[0] = '\0';                                  // очистка буфера, читобы не он не интерпретировался, как следующий входной пакет
 }
@@ -1382,7 +1411,7 @@ void sendAlarms(char *outputBuffer)
   #endif
   }
   DAWN_TIMEOUT = jsonReadtoInt(configAlarm, "after");
-  DAWN_BRIGHT = jsonReadtoInt(configAlarm, "a_br");
+  DAWN_BRIGHT = constrain(jsonReadtoInt(configAlarm, "a_br"), 1, EFFECT_BRIGHTNESS_MAX);
 }
 
 void sendSunsets(char *outputBuffer)
@@ -1435,7 +1464,7 @@ void sendSunsets(char *outputBuffer)
       LOG.println(configSunset);
   #endif
   }
-  SUNSET_BRIGHT = jsonReadtoInt(configSunset, "s_br");
+  SUNSET_BRIGHT = constrain(jsonReadtoInt(configSunset, "s_br"), 1, EFFECT_BRIGHTNESS_MAX);
 }
 
 void sendTimer(char *outputBuffer)

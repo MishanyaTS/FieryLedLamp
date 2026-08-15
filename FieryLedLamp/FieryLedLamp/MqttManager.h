@@ -13,7 +13,7 @@
  *   SO_ON / SO_OFF - включить/выключить озвучивание эффектов
  *   VOL15 - установить громкость озвучивания эффектов 15 [1...30]
  *   EFF10 - сделать активным эффект №10 (нумерация с нуля)
- *   BRI44 - установить яркость 44; диапазон [1..255]
+ *   BRI44 - установить яркость 44%; диапазон [1..100]
  *   SPD3 - установить скорость 3; диапазон [1..255]
  *   SCA1 - установить масштаб 1; диапазон [1..100]
  *   ALM_SET1 ON - завести будильник 1 (понедельник); ON - вкл, OFF - выкл.
@@ -250,9 +250,17 @@ void MqttManager::onMqttMessage(char* topic, char* payload, AsyncMqttClientMessa
 {
   if (payload != NULL)                                      // сохраняем пришедшее MQTT сообщение для дальнейшей обработки
   {
-    strncpy(lampInputBuffer, payload, len);
-    lampInputBuffer[len] = '\0';
-    needToPublish = true;
+    if (total >= MAX_UDP_BUFFER_SIZE || index >= MAX_UDP_BUFFER_SIZE - 1U) {
+      lampInputBuffer[0] = '\0';
+      needToPublish = false;
+      return;
+    }
+    if (index == 0U) lampInputBuffer[0] = '\0';
+    size_t available = (MAX_UDP_BUFFER_SIZE - 1U) - index;
+    size_t copyLen = (len < available) ? len : available;
+    memcpy(lampInputBuffer + index, payload, copyLen);
+    lampInputBuffer[index + copyLen] = '\0';
+    needToPublish = (index + len >= total);
   }
 
   #if GENERAL_DEBUG

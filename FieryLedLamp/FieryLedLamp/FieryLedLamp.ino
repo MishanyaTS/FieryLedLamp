@@ -75,7 +75,10 @@ WiFiMulti wifiMulti;
 #include "EepromManager.h"
 #include "FavoritesManager.h"
 
-bool restoreConfigBackupFromPartition();
+bool restoreConfigBackupFromPartition(bool useEepromEffectFallback);
+bool mergeEffectSettingsForRestore(const char* savedFileName,
+                                   const char* newFileName,
+                                   bool useEepromFallback);
 bool isConfigRestorePending();
 void clearConfigRestorePending();
 #include "TimerManager.h"
@@ -185,6 +188,20 @@ File fsUploadFile;                       // Для файловой систем
 uint16_t localPort = ESP_UDP_PORT;
 char packetBuffer[MAX_UDP_BUFFER_SIZE];  // buffer to hold incoming packet
 char inputBuffer[MAX_UDP_BUFFER_SIZE];
+
+IPAddress getActiveLampIP() {
+  if (WiFi.status() == WL_CONNECTED) {
+    IPAddress staIp = WiFi.localIP();
+    if (staIp != IPAddress(0, 0, 0, 0)) return staIp;
+  }
+
+  if (WiFi.getMode() & WIFI_AP) {
+    IPAddress apIp = WiFi.softAPIP();
+    if (apIp != IPAddress(0, 0, 0, 0)) return apIp;
+  }
+
+  return IPAddress(AP_STATIC_IP[0], AP_STATIC_IP[1], AP_STATIC_IP[2], AP_STATIC_IP[3]);
+}
 
 String yandexWeatherKey = "";
 bool useOpenWeather = false;
@@ -560,6 +577,8 @@ uint8_t tft_on = USE_TFT ? 1 : 0;     // Использовать дисплей
 #if USE_TFT
 uint8_t tft_clock_color = 0;
 uint8_t tft_weather_color = 1;
+uint8_t tft_day_brightness = 100;
+uint8_t tft_night_brightness = 10;
 bool     tft_ticker_on = false;
 uint8_t  tft_ticker_color = 0;
 uint16_t tft_ticker_speed = 60;
@@ -842,8 +861,12 @@ void setup()  //================================================================
   #endif
   FS_init();  //Запускаем файловую систему
 
+  EEPROM.begin(EEPROM_TOTAL_BYTES_USED);
+  delay(10);
+  const bool githubOtaRestorePending = EepromManager::IsGitHubOtaRestorePending();
+
   if (isConfigRestorePending()) {
-    bool restored = restoreConfigBackupFromPartition();
+    bool restored = restoreConfigBackupFromPartition(githubOtaRestorePending);
     clearConfigRestorePending();
     if (restored) LOG.println(F("Настройки восстановлены"));
     else          LOG.println(F("Не удалось восстановить настройки"));
@@ -945,9 +968,6 @@ void setup()  //================================================================
   IR_LoadConfigFromFile();
   #endif
 
-  EEPROM.begin(EEPROM_TOTAL_BYTES_USED);
-  delay(10);
-
   configSetup = readFile(F("config.json"), 2048);
   if (configSetup == F("Failed") || configSetup == F("Large")) configSetup = F("{}");
   if (EepromManager::RestoreWifiBackupAfterGitHubOta(configSetup)) {
@@ -978,11 +998,35 @@ void setup()  //================================================================
     if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
     tft_clock_color = jsonReadtoInt(configDisplay, "tft_clock_color");
     tft_weather_color = jsonReadtoInt(configDisplay, "tft_weather_color");
+    bool tftBrightnessConfigChanged = false;
+    String tftDayBrightnessCfg = jsonRead(configDisplay, "tft_day_bright");
+    String tftNightBrightnessCfg = jsonRead(configDisplay, "tft_night_bright");
+    if (tftDayBrightnessCfg.length()) {
+      tft_day_brightness = constrain(tftDayBrightnessCfg.toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+    } else {
+      tft_day_brightness = brightnessByteToPercent(constrain(jsonReadtoInt(configSetup, "day_bright"), 1, 255));
+      tftBrightnessConfigChanged = true;
+    }
+    if (tftNightBrightnessCfg.length()) {
+      tft_night_brightness = constrain(tftNightBrightnessCfg.toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+    } else {
+      tft_night_brightness = brightnessByteToPercent(constrain(jsonReadtoInt(configSetup, "night_bright"), 1, 255));
+      tftBrightnessConfigChanged = true;
+    }
+    if (!tftDayBrightnessCfg.length() || tftDayBrightnessCfg.toInt() != tft_day_brightness) {
+      jsonWrite(configDisplay, "tft_day_bright", tft_day_brightness);
+      tftBrightnessConfigChanged = true;
+    }
+    if (!tftNightBrightnessCfg.length() || tftNightBrightnessCfg.toInt() != tft_night_brightness) {
+      jsonWrite(configDisplay, "tft_night_bright", tft_night_brightness);
+      tftBrightnessConfigChanged = true;
+    }
     tft_ticker_on = jsonReadtoInt(configDisplay, "tft_ticker_on");
     tft_ticker_color = jsonReadtoInt(configDisplay, "tft_ticker_color");
     tft_ticker_speed = jsonReadtoInt(configDisplay, "tft_ticker_speed");
     tft_ticker_period = jsonReadtoInt(configDisplay, "tft_ticker_period");
     (jsonRead(configDisplay, "tft_ticker_text")).toCharArray(TFTTickerText, (jsonRead(configDisplay, "tft_ticker_text")).length() + 1);
+    if (tftBrightnessConfigChanged) writeFile(F("config_display.json"), configDisplay);
   }
   #endif
   ESP_CONN_TIMEOUT = jsonReadtoInt(configSetup, "TimeOut");
@@ -997,9 +1041,29 @@ void setup()  //================================================================
   #endif
   (jsonRead(configSetup, "run_text")).toCharArray (TextTicker, (jsonRead(configSetup, "run_text")).length()+1);
   NIGHT_HOURS_START = 60U * jsonReadtoInt(configSetup, "night_time");
-  NIGHT_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "night_bright");
   NIGHT_HOURS_STOP = 60U * jsonReadtoInt(configSetup, "day_time");
-  DAY_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "day_bright");
+  bool dayNightBrightnessConfigChanged = false;
+  const bool oldDayNightBrightnessScale = (jsonReadtoInt(configSetup, "brightness_scale_100") != 1);
+  const int storedNightBrightness = jsonReadtoInt(configSetup, "night_bright");
+  const int storedDayBrightness = jsonReadtoInt(configSetup, "day_bright");
+  if (oldDayNightBrightnessScale) {
+    NIGHT_HOURS_BRIGHTNESS = brightnessByteToPercent(constrain(storedNightBrightness, 1, 255));
+    DAY_HOURS_BRIGHTNESS = brightnessByteToPercent(constrain(storedDayBrightness, 1, 255));
+    jsonWrite(configSetup, "brightness_scale_100", 1);
+    dayNightBrightnessConfigChanged = true;
+  } else {
+    NIGHT_HOURS_BRIGHTNESS = constrain(storedNightBrightness, 1, BRIGHTNESS_PERCENT_MAX);
+    DAY_HOURS_BRIGHTNESS = constrain(storedDayBrightness, 1, BRIGHTNESS_PERCENT_MAX);
+  }
+  if (storedNightBrightness != NIGHT_HOURS_BRIGHTNESS) {
+    jsonWrite(configSetup, "night_bright", NIGHT_HOURS_BRIGHTNESS);
+    dayNightBrightnessConfigChanged = true;
+  }
+  if (storedDayBrightness != DAY_HOURS_BRIGHTNESS) {
+    jsonWrite(configSetup, "day_bright", DAY_HOURS_BRIGHTNESS);
+    dayNightBrightnessConfigChanged = true;
+  }
+  if (dayNightBrightnessConfigChanged) saveConfig();
   DONT_TURN_ON_AFTER_SHUTDOWN = jsonReadtoInt(configSetup, "effect_always"); 
   FavoritesManager::rndCycle = jsonReadtoInt(configSetup, "rnd_cycle");  // Перемешать Цикл
   AUTOMATIC_OFF_TIME = (30UL * 60UL * 1000UL) * ( uint32_t )(jsonReadtoInt(configSetup, "timer5h"));
@@ -1214,9 +1278,20 @@ void setup()  //================================================================
       shuffleFavoriteModes[i] = i;
 #endif
 
-  // EEPROM
-  EepromManager::InitEepromSettings(modes, &(restoreSettings)); // инициализация EEPROM; запись начального состояния настроек, если их там ещё нет; инициализация настроек лампы значениями из EEPROM
- // не придумал ничего лучше, чем делать восстановление настроек по умолчанию в обработчике инициализации EepromManager
+  // Временный массив нужен только для полной проверки effect.ini и как
+  // источник начальных значений, если в EEPROM ещё нет исправных настроек.
+  // После выхода из блока память массива освобождается.
+  {
+    ModeType parsedDefaults[MODE_AMOUNT];
+    const bool defaultsValid = readEffectSettingsFromFile(parsedDefaults);
+    if (!defaultsValid)
+    {
+      EepromManager::FillSafeSettings(parsedDefaults);
+      LOG.println(F("Повреждён /effect.ini; подготовлены безопасные значения"));
+    }
+    EepromManager::InitEepromSettings(modes, parsedDefaults, defaultsValid);
+  }
+  effectSettingsDirty = false;
     
 
   if(DONT_TURN_ON_AFTER_SHUTDOWN){
@@ -1224,11 +1299,11 @@ void setup()  //================================================================
   jsonWrite(configSetup, "Power", ONflag);
   }
   else
-      ONflag = jsonReadtoInt (configSetup, "Power");  // Чтение состояния лампы вкл/выкл,текущий эффект,яркость,скорость,масштаб
-  currentMode = jsonReadtoInt (configSetup, "eff_sel");
-  modes[currentMode].Brightness = jsonReadtoInt (configSetup, "br");
-  modes[currentMode].Speed = jsonReadtoInt (configSetup, "sp");
-  modes[currentMode].Scale = jsonReadtoInt (configSetup, "sc");
+      ONflag = jsonReadtoInt(configSetup, "Power");  // Состояние питания хранится в config.json
+  const int storedMode = jsonReadtoInt(configSetup, "eff_sel");
+  currentMode = (storedMode >= 0 && storedMode < MODE_AMOUNT) ? (uint8_t)storedMode : 0U;
+  jsonWrite(configSetup, "eff_sel", currentMode);
+  syncCurrentEffectToConfig();
   first_entry = 1;
   handle_alarm ();
   handle_sunset ();
@@ -1280,7 +1355,7 @@ void setup()  //================================================================
     #if USE_TFT
     TFT_ShowIP(WiFi.softAPIP().toString().c_str());
     #endif
-    connect = true;  
+    connect = true;
     #if DISPLAY_IP_AT_START
         loadingFlag = true;
       #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
@@ -1405,17 +1480,20 @@ void setup()  //================================================================
         apFallbackActive = false;
       }
     }
+      String startupIp = getActiveLampIP().toString();
       #if USE_TFT
-      TFT_ShowIP(WiFi.localIP().toString().c_str());
+      TFT_ShowIP(startupIp.c_str());
       #endif
     LOG.print(F("RSSI: ")); LOG.print(WiFi.RSSI()); LOG.println(F(" dBm"));
-    connect = true;
+    // После неудачного подключения временная AP уже поднята, но STA ещё не
+    // подключена. Не помечаем это как успешное соединение с роутером.
+    connect = (WiFi.status() == WL_CONNECTED);
     #if DISPLAY_IP_AT_START
         loadingFlag = true;
       #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором, матрица должна быть включена на время вывода текста
         digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
       #endif
-        while(!fillString(WiFi.localIP().toString().c_str(), CRGB::White, false)) {
+        while(!fillString(startupIp.c_str(), CRGB::White, false)) {
            delay(1);
             esp_task_wdt_reset();
            }
@@ -1433,7 +1511,10 @@ void setup()  //================================================================
       TFT_HideIP();
       #endif
   }
-  SSDP_init();
+  if (WiFi.status() == WL_CONNECTED && WiFi.getMode() == WIFI_STA) {
+    SSDP_init();
+    ssdpInitialized = true;
+  }
 
   // UDP 
   LOG.printf_P(PSTR("\nСтарт UDP сервера. Порт: %u\n"), localPort);
@@ -1503,7 +1584,6 @@ void setup()  //================================================================
   memset(matrixValue, 0, sizeof(matrixValue)); //это массив для эффекта Огонь. странно, что его нужно залить нулями
   randomSeed(micros());
   changePower();
-  loadingFlag = true;
   
   //IR receiver
   #if USE_IR_RECEIVER
@@ -1636,7 +1716,9 @@ void wifiReconnect() {
 }
 
 void restartSSDP() {
-  if (ssdpInitialized && WiFi.getMode() != WIFI_OFF) {
+  if (WiFi.status() != WL_CONNECTED || WiFi.getMode() != WIFI_STA) {
+    ssdpInitialized = false;
+    return;
   }
   LOG.println(F("Инициализация SSDP..."));
   SSDP_init();
@@ -1776,7 +1858,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       }
   #endif  //USE_IR_RECEIVER
 
-  //EepromManager::HandleEepromTick(&settChanged, &eepromTimeout, modes);
+  handleEffectSettingsPersistence();
     yield();
 
   //#ifdef USE_NTP
@@ -1793,9 +1875,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
   #endif
   OtaPackageHandle();
                                                             
-  TimerManager::HandleTimer(&ONflag, //&settChanged, //&eepromTimeout, // обработка событий таймера отключения лампы
-                            &timeout_save_file_changes,
-                            &save_file_changes, &changePower);    
+  TimerManager::HandleTimer(&ONflag, &changePower); // обработка таймера отключения лампы
   
   if (FavoritesManager::HandleFavorites(                    // обработка режима избранных эффектов
       &ONflag,
@@ -1810,6 +1890,9 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
       ,espMode
       ))
   {
+    #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) applyPendingRandomEffectSettings();
+    #endif
     #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
@@ -1829,7 +1912,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     mqtt_timer = millis();
     if (strlen(inputBuffer) > 0)                            // проверка входящего MQTT сообщения; если оно не пустое - выполнение команды из него и формирование MQTT ответа
     {
-      processInputBuffer(inputBuffer, MqttManager::mqttBuffer, true);
+      processInputBuffer(inputBuffer, MqttManager::mqttBuffer, true, sizeof(MqttManager::mqttBuffer));
     }
   #ifdef PUBLISH_STATE_IN_OLD_FORMAT  
     MqttManager::publishState(0);  //публикация буфера MQTT ответа в топик <TopicBase>/LedLamp_<ChipId>/state
@@ -1858,7 +1941,7 @@ do {    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++======
     else
         jsonWrite(MqttSnd, "tmr", (String)0);                           // Количество секунд до срабатывания таймера == 0
     
-    MqttSnd.toCharArray(MqttManager::mqttBuffer, MqttSnd.length() +1);  // можно добавить еще какие-то переменные (данные) для вывода в ответ, но длина строки ответа должна быть меньше 255 байт
+    MqttSnd.toCharArray(MqttManager::mqttBuffer, sizeof(MqttManager::mqttBuffer)); // безопасно ограничиваем ответ MQTT-буфером
     MqttManager::publishState(1);  //публикация буфера MQTT ответы (JSON): "{"power":"ON","cycle":"OFF","effect":"111","bri":"15","spd":"33","sca":"58","sound":"ON","volume":"10","runt":"10","runc":"123","runf":"1","runc":"220","rnde":"0","rndc":"1","rndf":"0","tmr":59900"}" в топик <TopicBase>/LedLamp_<ChipId>/snd
   }
   #endif

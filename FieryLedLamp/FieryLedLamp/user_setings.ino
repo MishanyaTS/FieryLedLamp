@@ -14,6 +14,8 @@ void User_setings ()  {
 #if USE_TFT
  HTTP.on("/tft_clock_color", handle_tft_clock_color);   // Цвет часов на TFT
  HTTP.on("/tft_weather_color", handle_tft_weather_color); // Цвет погоды на TFT
+ HTTP.on("/tft_day_bright", handle_tft_day_bright); // Дневная яркость TFT
+ HTTP.on("/tft_night_bright", handle_tft_night_bright); // Ночная яркость TFT
  HTTP.on("/tft_ticker_on", handle_tft_ticker_on); // Включить бегущаю строку на TFT
  HTTP.on("/tft_ticker_color", handle_tft_ticker_color); // Цвет бегущаей строки на TFT
  HTTP.on("/tft_ticker_speed", handle_tft_ticker_speed); // Скорость бегущаей строки на TFT
@@ -21,9 +23,18 @@ void User_setings ()  {
  HTTP.on("/tft_ticker_text", handle_tft_ticker_text); // Период бегущаей строки на TFT
 #endif
  HTTP.on("/ESP_mode", handle_ESP_mode); // Установка ESP Mode
+ HTTP.on("/wifi_multi", HTTP_GET, []() { // Переключение между сохранёнными Wi-Fi сетями
+   int enabled = HTTP.arg("wifi_multi").toInt() ? 1 : 0;
+   jsonWrite(configSetup, "wifi_multi", enabled);
+   saveConfig();
+   HTTP.send(200, F("text/plain"), F("OK"));
+ });
  HTTP.on("/eff_reset", handle_eff_reset);  //сброс настроек эффектов по умолчанию
  HTTP.on("/run_text", handle_run_text);  // Текст для бегущей строки
- HTTP.on("/night_time", handle_night_time);  // Параметры вывода времени бегущей строкой на выключенной лампе (яркость и время день,ночь) 
+ HTTP.on("/night_time", handle_night_time);      // Начало ночного времени
+ HTTP.on("/night_bright", handle_night_bright);  // Ночная яркость бегущей строки
+ HTTP.on("/day_time", handle_day_time);          // Начало дневного времени
+ HTTP.on("/day_bright", handle_day_bright);      // Дневная яркость бегущей строки
  HTTP.on("/effect_always", handle_effect_always);  // Не возобновлять работу эффектов
  HTTP.on("/timer5h", handle_timer5h);  // Автовыключение через 5 часов
  HTTP.on("/ntp", handle_ntp);  // Адрес NTP сервера
@@ -63,8 +74,7 @@ void User_setings ()  {
  HTTP.on("/multi", handle_multiple_lamp);  // Настройка управления несколькими лампами
  #endif //USE_MULTIPLE_LAMPS_CONTROL
  HTTP.on("/eff_save", handle_eff_save);  // Сохранить настройки эффектов в файл
- HTTP.on("/eff_read", handle_eff_read);  // Загрузить настройки эффектов из файла
- //HTTP.on("/alt", handle_alt_panel);   // Альтернативная главная web страница управления эффектами 
+ //HTTP.on("/alt", handle_alt_panel);   // Альтернативная главная web страница управления эффектами
  HTTP.on("/get_time", get_time_manual);  // Синхронизация времени лампы с браузером на устройстве (телефоне)
  //HTTP.on("/index", handle_index);  // Начальная страница
  #if USE_MP3_PLAYER
@@ -565,19 +575,8 @@ HTTP.on("/ir_learn", HTTP_GET, []() {
 // IP адрес в модальном окне "Статусы устройств"
 HTTP.on("/wifi_ip", HTTP_GET, []() {
   DynamicJsonDocument doc(256);
-  String ip;
-
-  // Проверяем, включён ли режим точки доступа (AP)
-  if (WiFi.getMode() & WIFI_AP || WiFi.softAPgetStationNum() > 0) {
-    ip = WiFi.softAPIP().toString();
-    if (ip == "0.0.0.0") ip = "192.168.4.1";
-  } else {
-    // Режим клиента (STA)
-    ip = WiFi.localIP().toString();
-    if (ip == "0.0.0.0") {
-      ip = "Не получен IP";
-    }
-  }
+  String ip = getActiveLampIP().toString();
+  if (ip == "0.0.0.0") ip = "Не получен IP";
 
   doc["ip"] = ip;
 
@@ -615,6 +614,29 @@ HTTP.on("/features", HTTP_GET, []() {
     String response;
     serializeJson(doc, response);
     HTTP.send(200, "application/json", response);
+  });
+
+HTTP.on("/api/v1/info", HTTP_GET, []() {
+    DynamicJsonDocument doc(768);
+    IPAddress activeIp = getActiveLampIP();
+    String appVersion = String(F(VERSION));
+    appVersion.trim();
+    doc["api"] = 1;
+    doc["device"] = "FieryLedLamp";
+    doc["name"] = LAMP_NAME;
+    doc["version"] = appVersion;
+    doc["app_patch"] = "2026.08";
+    doc["id"] = get_Chip_ID();
+    doc["ip"] = activeIp.toString();
+    doc["http_port"] = ESP_HTTP_PORT;
+    doc["udp_port"] = ESP_UDP_PORT;
+    doc["sta_connected"] = (WiFi.status() == WL_CONNECTED);
+    doc["ap_active"] = ((WiFi.getMode() & WIFI_AP) != 0);
+    doc["wifi_mode"] = (WiFi.getMode() == WIFI_AP) ? "AP" :
+                       (WiFi.getMode() == WIFI_STA) ? "Station" : "AP+Station";
+    String response;
+    serializeJson(doc, response);
+    HTTP.send(200, "application/json; charset=utf-8", response);
   });
 
 HTTP.on("/heap", HTTP_GET, []() {
@@ -670,7 +692,7 @@ HTTP.on("/heap", HTTP_GET, []() {
     doc["uptime"] = millis() / 1000UL; 
     doc["wifi_mode"] = (WiFi.getMode() == WIFI_AP) ? "AP" : 
                        (WiFi.getMode() == WIFI_STA) ? "Station" : "AP+Station";
-    doc["ip_address"] = WiFi.localIP().toString();
+    doc["ip_address"] = getActiveLampIP().toString();
     doc["lamp_on"] = ONflag;
     doc["current_effect"] = currentMode;
     doc["effect_count"] = MODE_AMOUNT;
@@ -801,6 +823,26 @@ void handle_tft_weather_color() {
   HTTP.send(200, F("text/plain"), F("OK"));
 }
 
+void handle_tft_day_bright() {
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  tft_day_brightness = constrain(HTTP.arg("tft_day_bright").toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+  jsonWrite(configDisplay, "tft_day_bright", tft_day_brightness);
+  writeFile(F("config_display.json"), configDisplay);
+  TFT_ApplyBrightnessNow();
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_tft_night_bright() {
+  String configDisplay = readFile(F("config_display.json"), 1024);
+  if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
+  tft_night_brightness = constrain(HTTP.arg("tft_night_bright").toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+  jsonWrite(configDisplay, "tft_night_bright", tft_night_brightness);
+  writeFile(F("config_display.json"), configDisplay);
+  TFT_ApplyBrightnessNow();
+  HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
 void handle_tft_ticker_on() {
   String configDisplay = readFile(F("config_display.json"), 1024);
   if (configDisplay == F("Failed") || configDisplay == F("Large")) configDisplay = F("{}");
@@ -884,20 +926,33 @@ void handle_ESP_mode() {
   HTTP.send(200, F("text/plain"), F("OK"));
  }
 
-void handle_eff_reset() {    
-    restoreSettings();
+void handle_eff_reset() { // Сброс всех эффектов к значениям из /effect.ini
+    selectedSettings = 0U;
+    ModeType parsedDefaults[MODE_AMOUNT];
+    if (!readEffectSettingsFromFile(parsedDefaults)) {
+      showWarning(CRGB::Red, 2000U, 500U);
+      HTTP.send(400, F("application/json"), getEffectSettingsErrorJson());
+      return;
+    }
+
+    memcpy(modes, parsedDefaults, sizeof(parsedDefaults));
+    markEffectSettingsChanged();
+    if (!saveEffectSettingsNow(false)) { // явная операция должна пережить перезапуск
+      showWarning(CRGB::Red, 2000U, 500U);
+      HTTP.send(500, F("application/json"), F("{\"error\":\"eeprom\"}"));
+      return;
+    }
     updateSets();
-    jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-    jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-    jsonWrite(configSetup, "sc", modes[currentMode].Scale);    
-    showWarning(CRGB::Blue, 2000U, 500U);                    // мигание синим цветом 2 секунды
+    syncCurrentEffectToConfig();
+    SetBrightness(modes[currentMode].Brightness);
+    showWarning(CRGB::Blue, 2000U, 500U);
     #if USE_BLYNK
     updateRemoteBlynkParams();
     #endif
-    HTTP.send(200, F("text/plain"), F("OK"));
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
-    #endif  //USE_MULTIPLE_LAMPS_CONTROL   
+    #endif  //USE_MULTIPLE_LAMPS_CONTROL
  }
 
 void handle_run_text ()  {
@@ -919,18 +974,13 @@ void handle_run_text ()  {
     HTTP.send(200, F("text/plain"), F("OK")); // отправляем ответ о выполнении
  }
 
-void handle_night_time ()  {
-    jsonWrite(configSetup, "night_time", HTTP.arg("night_time").toInt());
-    jsonWrite(configSetup, "night_bright", HTTP.arg("night_bright").toInt());
-    jsonWrite(configSetup, "day_time", HTTP.arg("day_time").toInt());
-    jsonWrite(configSetup, "day_bright", HTTP.arg("day_bright").toInt());
-    saveConfig();
+void applyDayNightSettingsNow() {
     NIGHT_HOURS_START = 60U * jsonReadtoInt(configSetup, "night_time");
-    NIGHT_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "night_bright");
+    NIGHT_HOURS_BRIGHTNESS = constrain(jsonReadtoInt(configSetup, "night_bright"), 1, BRIGHTNESS_PERCENT_MAX);
     NIGHT_HOURS_STOP = 60U * jsonReadtoInt(configSetup, "day_time");
-    DAY_HOURS_BRIGHTNESS = jsonReadtoInt(configSetup, "day_bright");
+    DAY_HOURS_BRIGHTNESS = constrain(jsonReadtoInt(configSetup, "day_bright"), 1, BRIGHTNESS_PERCENT_MAX);
     getBrightnessForPrintTime();
-    if(ONflag && !dawnFlag && !sunsetFlag)
+    if (ONflag && !dawnFlag && !sunsetFlag)
         SetBrightness(modes[currentMode].Brightness);
     #if USE_TM1637
     clockTicker_blink();
@@ -938,10 +988,41 @@ void handle_night_time ()  {
     #if USE_TFT
     TFT_ApplyBrightnessNow();
     #endif
-    timeout_save_file_changes = millis();
-    bitSet (save_file_changes, 0);
-    HTTP.send(200, F("text/plain"), F("OK"));
- }
+}
+
+void handle_night_time() {
+    const uint8_t value = constrain(HTTP.arg("night_time").toInt(), 0, 23);
+    jsonWrite(configSetup, "night_time", value);
+    saveConfig();
+    applyDayNightSettingsNow();
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_night_bright() {
+    const uint8_t value = constrain(HTTP.arg("night_bright").toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+    jsonWrite(configSetup, "night_bright", value);
+    jsonWrite(configSetup, "brightness_scale_100", 1);
+    saveConfig();
+    applyDayNightSettingsNow();
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_day_time() {
+    const uint8_t value = constrain(HTTP.arg("day_time").toInt(), 0, 23);
+    jsonWrite(configSetup, "day_time", value);
+    saveConfig();
+    applyDayNightSettingsNow();
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
+
+void handle_day_bright() {
+    const uint8_t value = constrain(HTTP.arg("day_bright").toInt(), 1, BRIGHTNESS_PERCENT_MAX);
+    jsonWrite(configSetup, "day_bright", value);
+    jsonWrite(configSetup, "brightness_scale_100", 1);
+    saveConfig();
+    applyDayNightSettingsNow();
+    HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
+}
 
 void handle_effect_always ()  {
     jsonWrite(configSetup, "effect_always", HTTP.arg("effect_always").toInt());
@@ -974,7 +1055,12 @@ void handle_ntp ()  {
 }
 
 void handle_eff_sel () {
-    uint8_t temp = (HTTP.arg("eff_sel").toInt());
+    const int requestedMode = HTTP.arg("eff_sel").toInt();
+    if (requestedMode < 0 || requestedMode >= MODE_AMOUNT) {
+      HTTP.send(400, F("application/json"), F("{\"error\":\"effect_index\"}"));
+      return;
+    }
+    uint8_t temp = (uint8_t)requestedMode;
     jsonWrite(configSetup, "eff_sel", temp);
     currentMode = temp;
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
@@ -983,7 +1069,10 @@ void handle_eff_sel () {
     SetBrightness(modes[currentMode].Brightness);
     loadingFlag = true;
       if (random_on && FavoritesManager::FavoritesRunning)
+      {
         selectedSettings = 1U;
+        applyPendingRandomEffectSettings();
+      }
     #if USE_MQTT
     if (espMode == 1U)
     {
@@ -1041,7 +1130,10 @@ void handle_eff () {
     SetBrightness(modes[currentMode].Brightness);
     loadingFlag = true;
     if (random_on && FavoritesManager::FavoritesRunning)
+    {
         selectedSettings = 1U;
+        applyPendingRandomEffectSettings();
+    }
     #if USE_MQTT
     if (espMode == 1U)
     {
@@ -1058,8 +1150,10 @@ void handle_eff () {
 }
 
 void handle_br ()  {
-    jsonWrite(configSetup, "br", HTTP.arg("br").toInt());
-    modes[currentMode].Brightness = jsonReadtoInt(configSetup, "br");
+    modes[currentMode].Brightness = (uint8_t)constrain(
+        HTTP.arg("br").toInt(), 1, EFFECT_BRIGHTNESS_MAX);
+    jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    markEffectSettingsChanged();
     SetBrightness(modes[currentMode].Brightness);
     #if GENERAL_DEBUG
     LOG.printf_P(PSTR("Новое значение яркости: %d\n"), modes[currentMode].Brightness);
@@ -1077,8 +1171,10 @@ void handle_br ()  {
 }
 
 void handle_sp ()  {
-    jsonWrite(configSetup, "sp", HTTP.arg("sp").toInt());
-    modes[currentMode].Speed = jsonReadtoInt(configSetup, "sp");
+    modes[currentMode].Speed = (uint8_t)constrain(
+        HTTP.arg("sp").toInt(), 1, 255);
+    jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    markEffectSettingsChanged();
     loadingFlag = true;    // Перезапуск Эффекта
     #if GENERAL_DEBUG
     LOG.printf_P(PSTR("Новое значение скорости: %d\n"), modes[currentMode].Speed);
@@ -1096,8 +1192,10 @@ void handle_sp ()  {
 }
 
 void handle_sc ()  {
-    jsonWrite(configSetup, "sc", HTTP.arg("sc").toInt());
-    modes[currentMode].Scale = jsonReadtoInt(configSetup, "sc");
+    modes[currentMode].Scale = (uint8_t)constrain(
+        HTTP.arg("sc").toInt(), 1, 255);
+    jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    markEffectSettingsChanged();
     loadingFlag = true;  // Перезапуск Эффекта
     #if GENERAL_DEBUG
     LOG.printf_P(PSTR("Новое значение Масштаба / Цвета: %d\n"), modes[currentMode].Scale);
@@ -1115,8 +1213,9 @@ void handle_sc ()  {
 }
 
 void handle_brm ()   {
-    modes[currentMode].Brightness = constrain(modes[currentMode].Brightness - 1, 1, 255);
+    modes[currentMode].Brightness = constrain(modes[currentMode].Brightness - 1, 1, EFFECT_BRIGHTNESS_MAX);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    markEffectSettingsChanged();
     SetBrightness(modes[currentMode].Brightness);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1131,8 +1230,9 @@ void handle_brm ()   {
 }
 
 void handle_brp ()   {
-    modes[currentMode].Brightness = constrain(modes[currentMode].Brightness + 1, 1, 255);
+    modes[currentMode].Brightness = constrain(modes[currentMode].Brightness + 1, 1, EFFECT_BRIGHTNESS_MAX);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    markEffectSettingsChanged();
     SetBrightness(modes[currentMode].Brightness);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1149,6 +1249,7 @@ void handle_brp ()   {
 void handle_spm ()   {
     modes[currentMode].Speed = constrain(modes[currentMode].Speed - 1, 1, 255);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    markEffectSettingsChanged();
     loadingFlag = true;  // Перезапуск Эффекта
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1165,6 +1266,7 @@ void handle_spm ()   {
 void handle_spp ()   {
     modes[currentMode].Speed = constrain(modes[currentMode].Speed + 1, 1, 255);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    markEffectSettingsChanged();
     loadingFlag = true;  // Перезапуск Эффекта
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1179,8 +1281,10 @@ void handle_spp ()   {
 }
 
 void handle_scm ()   {
-    modes[currentMode].Scale = constrain(modes[currentMode].Scale - 1, 1, 100);
+    modes[currentMode].Scale = constrain(modes[currentMode].Scale - 1, 1,
+                                         effectScaleStepMaximum(currentMode));
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    markEffectSettingsChanged();
     loadingFlag = true;  // Перезапуск Эффекта
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1195,8 +1299,10 @@ void handle_scm ()   {
 }
 
 void handle_scp ()   {
-    modes[currentMode].Scale = constrain(modes[currentMode].Scale + 1, 1, 100);
+    modes[currentMode].Scale = constrain(modes[currentMode].Scale + 1, 1,
+                                         effectScaleStepMaximum(currentMode));
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    markEffectSettingsChanged();
     loadingFlag = true;  // Перезапуск Эффекта
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1237,6 +1343,7 @@ void handle_Power ()  {
       clockTicker_blink();
       #endif
       SetBrightness(modes[currentMode].Brightness);
+      if (!ONflag) persistEffectSettingsBeforePowerOff();
       changePower();
     }
     else if (sunsetFlag == 1){
@@ -1246,6 +1353,7 @@ void handle_Power ()  {
       clockTicker_blink();
       #endif
       SetBrightness(modes[currentMode].Brightness);
+      if (!ONflag) persistEffectSettingsBeforePowerOff();
       changePower();
     }
     else {    
@@ -1255,17 +1363,14 @@ void handle_Power ()  {
       ONflag = tmp;
         if (!ONflag)  {
             // Немедленное выключение
+            persistEffectSettingsBeforePowerOff();
             changePower(); // Выключаем матрицу сразу
-            timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT; // Сбрасываем таймер для немедленного сохранения
-            save_file_changes = 7;
-            Save_File_Changes();
         } else {
-          // Включение лампы: загружаем настройки из EEPROM
-            //EepromManager::EepromGet(modes);
+            // При каждом включении EEPROM является источником для modes[].
+            restoreEffectSettingsForPowerOn();
             timeout_save_file_changes = millis();
             bitSet(save_file_changes, 0);
-    changePower();
-    loadingFlag = true;
+            changePower();
         }
     }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
@@ -1359,11 +1464,16 @@ void handle_alarm ()  {
     if (!first_entry) {
        jsonWrite(configAlarm, "t", HTTP.arg("t").toInt());
        jsonWrite(configAlarm, "after", HTTP.arg("after").toInt());
-       jsonWrite(configAlarm, "a_br", HTTP.arg("a_br").toInt());
+       jsonWrite(configAlarm, "a_br", constrain(HTTP.arg("a_br").toInt(), 1, EFFECT_BRIGHTNESS_MAX));
     } 
     dawnMode = jsonReadtoInt(configAlarm, "t")-1;
     DAWN_TIMEOUT = jsonReadtoInt(configAlarm, "after");
-    DAWN_BRIGHT = jsonReadtoInt(configAlarm, "a_br");
+    const int storedDawnBrightness = jsonReadtoInt(configAlarm, "a_br");
+    DAWN_BRIGHT = constrain(storedDawnBrightness, 1, EFFECT_BRIGHTNESS_MAX);
+    if (storedDawnBrightness != DAWN_BRIGHT) {
+      jsonWrite(configAlarm, "a_br", DAWN_BRIGHT);
+      saveRequest = true;
+    }
     if (!first_entry) {
       manualOff = false;
       dawnFlag = 0;
@@ -1404,10 +1514,15 @@ void handle_sunset ()  {
     }
     if (!first_entry) {
        jsonWrite(configSunset, "t", HTTP.arg("t").toInt());
-       jsonWrite(configSunset, "s_br", HTTP.arg("s_br").toInt());
+       jsonWrite(configSunset, "s_br", constrain(HTTP.arg("s_br").toInt(), 1, EFFECT_BRIGHTNESS_MAX));
     } 
     sunsetMode = jsonReadtoInt(configSunset, "t")-1;
-    SUNSET_BRIGHT = jsonReadtoInt(configSunset, "s_br");
+    const int storedSunsetBrightness = jsonReadtoInt(configSunset, "s_br");
+    SUNSET_BRIGHT = constrain(storedSunsetBrightness, 1, EFFECT_BRIGHTNESS_MAX);
+    if (storedSunsetBrightness != SUNSET_BRIGHT) {
+      jsonWrite(configSunset, "s_br", SUNSET_BRIGHT);
+      saveRequest = true;
+    }
     if (!first_entry) {
       manualsOff = false;
       sunsetFlag = 0;
@@ -1453,6 +1568,9 @@ void save_alarms()   {
         jsonWrite(configAlarm, "t", (dawnMode + 1));
     }
     jsonWrite(configAlarm, "after", DAWN_TIMEOUT);
+    if (jsonReadtoInt(configAlarm, "a_br") != DAWN_BRIGHT) {
+        alarm_change = true;
+    }
     jsonWrite(configAlarm, "a_br", DAWN_BRIGHT);  
     if (alarm_change) {
         writeFile(F("config_alarm.json"), configAlarm );
@@ -1491,6 +1609,9 @@ void save_sunsets()   {
         sunset_change = true;
         jsonWrite(configSunset, "t", (sunsetMode + 1));
     }
+    if (jsonReadtoInt(configSunset, "s_br") != SUNSET_BRIGHT) {
+        sunset_change = true;
+    }
     jsonWrite(configSunset, "s_br", SUNSET_BRIGHT);  
     if (sunset_change) {
         writeFile(F("config_sunset.json"), configSunset );
@@ -1508,7 +1629,6 @@ void handle_cycle_on()  {  // Вкл/выкл режима Цикл
     if (ONflag && tmp)   {
         jsonWrite(configSetup, "cycle_on", 1);
         FavoritesManager::FavoritesRunning = 1;
-        EepromManager::EepromPut(modes);
     }
     else   {
         FavoritesManager::FavoritesRunning = 0;
@@ -1661,8 +1781,13 @@ void handle_timer ()   {  // Установка таймера
 }
 
 void handle_def ()   { // Сброс настроек текущего эффекта по умолчанию
-    setModeSettings();
-    updateSets();    
+    if (!resetCurrentEffectToDefaults()) {
+      showWarning(CRGB::Red, 2000U, 500U);
+      HTTP.send(400, F("application/json"), getEffectSettingsErrorJson());
+      return;
+    }
+    updateSets();
+    SetBrightness(modes[currentMode].Brightness);
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
@@ -1672,6 +1797,14 @@ void handle_def ()   { // Сброс настроек текущего эффе�
 void handle_rnd ()   { // Установка случайных настроек текущему эффекту
     selectedSettings = 1U;
     updateSets();
+    if (!applyPendingRandomEffectSettings()) {
+      selectedSettings = 0U;
+      if (!ONflag || dawnFlag || sunsetFlag)
+        HTTP.send(409, F("application/json"), F("{\"error\":\"lamp_off\"}"));
+      else
+        HTTP.send(422, F("application/json"), F("{\"error\":\"random_unavailable\"}"));
+      return;
+    }
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
@@ -1679,14 +1812,15 @@ void handle_rnd ()   { // Установка случайных настроек
 }
 
 void handle_all_br ()   {  //Общая яркость
-    jsonWrite(configSetup, "all_br", HTTP.arg("all_br").toInt());
+    jsonWrite(configSetup, "all_br", constrain(HTTP.arg("all_br").toInt(), 1, EFFECT_BRIGHTNESS_MAX));
     uint8_t ALLbri = jsonReadtoInt(configSetup, "all_br");
     esp_task_wdt_reset();
     for (uint8_t i = 0; i < MODE_AMOUNT; i++) {
-        modes[i].Brightness = ALLbri;    
+        modes[i].Brightness = ALLbri;
       }
+    markEffectSettingsChanged();
     jsonWrite(configSetup, "br", ALLbri);
-    FastLED.setBrightness(ALLbri);
+    SetBrightness(ALLbri);
     loadingFlag = true;
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
     #if USE_MULTIPLE_LAMPS_CONTROL
@@ -1869,66 +2003,24 @@ void multiple_lamp_control ()   {
 #endif //USE_MULTIPLE_LAMPS_CONTROL
 
 void handle_eff_save ()   {
-    LittleFS.begin();
-    File file = LittleFS.open(F("/effect.ini"),"w");
-    if (file)   {
-        for (uint8_t i = 0; i < MODE_AMOUNT; i++) {
-           file.write (modes[i].Brightness);
-           file.write (modes[i].Speed);
-           file.write (modes[i].Scale);
-           yield();
-        }
-        #if GENERAL_DEBUG
-        LOG.println (F("Настройки эффектов сохранены в файл"));
-        #endif //GENERAL_DEBUG
-        showWarning(CRGB::Blue, 2000U, 500U);                    // мигание синим цветом 2 секунды
-        esp_task_wdt_reset();
-        yield();
+    if (!writeEffectSettingsToFile(modes)) {
+      showWarning(CRGB::Red, 2000U, 500U);
+      HTTP.send(500, F("application/json"), getEffectSettingsErrorJson());
+      return;
     }
-    else   {
-        #if GENERAL_DEBUG
-        LOG.println (F("Не удалось сохранить настройки эффектов в файл"));
-        #endif //GENERAL_DEBUG
-    }
-    file.close();
-    HTTP.send(200, F("text/plain"), F("OK"));
-}
 
-void handle_eff_read ()   {
-    LittleFS.begin();
-    File file = LittleFS.open(F("/effect.ini"),"r");
-    if (file)   {
-        uint16_t file_size = file.size();
-        if ((file_size/3) < MODE_AMOUNT) file_size -= 6;
-        esp_task_wdt_reset();
-        for (uint8_t i = 0; i < (file_size/3); i++) {
-           modes[i].Brightness = file.read ();
-           modes[i].Speed = file.read ();
-           modes[i].Scale = file.read ();
-           yield();
-        }
-        #if GENERAL_DEBUG
-        LOG.println (F("Настройки эффектов прочитаны из файла и применены"));
-        #endif //GENERAL_DEBUG
-        showWarning(CRGB::Blue, 2000U, 500U);                    // мигание синим цветом 2 секунды
-        loadingFlag = true;  // Перезапуск Эффекта
-        jsonWrite(configSetup, "br", modes[currentMode].Brightness);
-        jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-        jsonWrite(configSetup, "sc", modes[currentMode].Scale);       
+    if (!saveEffectSettingsNow(true)) {
+      showWarning(CRGB::Red, 2000U, 500U);
+      HTTP.send(500, F("application/json"),
+                F("{\"error\":\"eeprom\",\"message\":\"effect.ini сохранен, но EEPROM записать не удалось\"}"));
+      return;
     }
-    else   {
-        #if GENERAL_DEBUG
-        LOG.println (F("Не удалось прочитать настройки эффектов из файла"));
-        #endif //GENERAL_DEBUG
-    }
-    file.close();    
+
+    #if GENERAL_DEBUG
+    LOG.println(F("Все настройки эффектов сохранены в /effect.ini и EEPROM"));
+    #endif //GENERAL_DEBUG
+    showWarning(CRGB::Blue, 2000U, 500U);
     HTTP.send(200, F("text/plain"), F("OK"));
-    #if USE_MQTT
-    if (espMode == 1U)
-    {
-      MqttManager::needToPublish = true;
-    }
-    #endif
 }
 /*
 void handle_alt_panel ()   {
@@ -2546,7 +2638,7 @@ void handle_reset_to_default ()   {
     LOG.println("\n*** Reset to Default ***");
     showWarning(CRGB::Red, 500, 250U);
     esp_task_wdt_reset();
-    setModeSettings();
+    resetAllEffectsToDefaults();
     updateSets();    
     if(FileCopy (F("/default/config.json"), F("/config.json"))) {
         esp_task_wdt_reset();
@@ -3140,12 +3232,13 @@ void EffectList (const String& efflist )   {
 }
  
 void SetBrightness(uint8_t brightness)   {
+    brightness = constrain(brightness, 1U, EFFECT_BRIGHTNESS_MAX);
     if (AutoBrightness && !dawnFlag && !day_night) {
-        FastLED.setBrightness(constrain(brightness >> AutoBrightness, 1, 100));
+        FastLED.setBrightness(effectBrightnessToFastLED(constrain(brightness >> AutoBrightness, 1, EFFECT_BRIGHTNESS_MAX)));
     }
     else if (AutoBrightness && !sunsetFlag && !day_night) {
-        FastLED.setBrightness(constrain(brightness >> AutoBrightness, 1, 100));
+        FastLED.setBrightness(effectBrightnessToFastLED(constrain(brightness >> AutoBrightness, 1, EFFECT_BRIGHTNESS_MAX)));
     }
     else
-        FastLED.setBrightness(modes[currentMode].Brightness);
+        FastLED.setBrightness(effectBrightnessToFastLED(brightness));
 }

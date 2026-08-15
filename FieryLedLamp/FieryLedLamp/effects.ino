@@ -55,16 +55,59 @@ void dimAll(uint8_t value, CRGB *LEDarray = leds) {
 
 //константы размера матрицы вычисляется только здесь и не меняется в эффектах
 
-#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
-void setModeSettings(uint8_t Scale, uint8_t Speed) {
-  modes[currentMode].Scale = Scale ? Scale : pgm_read_byte(&defaultSettings[currentMode][2]);
-  modes[currentMode].Speed = Speed ? Speed : pgm_read_byte(&defaultSettings[currentMode][1]);
-  jsonWrite(configSetup, "sp", modes[currentMode].Speed);
-  jsonWrite(configSetup, "sc", modes[currentMode].Scale);  
+bool resetCurrentEffectToDefaults() {
+  if (currentMode >= MODE_AMOUNT) return false;
+
+  ModeType parsedDefaults[MODE_AMOUNT];
+  if (!readEffectSettingsFromFile(parsedDefaults))
+  {
+    selectedSettings = 0U;
+    return false;
+  }
+
+  // Рабочий массив меняем только после успешной проверки всего файла.
+  modes[currentMode] = parsedDefaults[currentMode];
   selectedSettings = 0U;
+  syncCurrentEffectToConfig();
+  markEffectSettingsChanged();
+  loadingFlag = true;
+  SetBrightness(modes[currentMode].Brightness);
+
+#if USE_MQTT
+  if (espMode == 1U) MqttManager::needToPublish = true;
+#endif
+#if USE_MULTIPLE_LAMPS_CONTROL
+  repeat_multiple_lamp_control = true;
+#endif
 #if USE_BLYNK
   updateRemoteBlynkParams();
 #endif
+  return true;
+}
+
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+bool setModeSettings(uint16_t Scale, uint16_t Speed) {
+  if (currentMode >= MODE_AMOUNT) {
+    selectedSettings = 0U;
+    return false;
+  }
+
+  modes[currentMode].Scale = (uint8_t)constrain(Scale, 1U, 255U);
+  modes[currentMode].Speed = (uint8_t)constrain(Speed, 1U, 255U);
+  selectedSettings = 0U;
+  syncCurrentEffectToConfig();
+  markEffectSettingsChanged();
+
+#if USE_MQTT
+  if (espMode == 1U) MqttManager::needToPublish = true;
+#endif
+#if USE_MULTIPLE_LAMPS_CONTROL
+  repeat_multiple_lamp_control = true;
+#endif
+#if USE_BLYNK
+  updateRemoteBlynkParams();
+#endif
+  return true;
 }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
@@ -198,7 +241,7 @@ const TProgmemRGBPalette16 *palette_arr[] = {
 };
 const TProgmemRGBPalette16 *curPalette = palette_arr[0];
 void setCurrentPalette() {
-  if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U; // чтобы не было проблем при прошивке без очистки памяти
+  constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
   curPalette = palette_arr[(uint8_t)(modes[currentMode].Scale / 100.0F * ((sizeof(palette_arr) / sizeof(TProgmemRGBPalette16 *)) - 0.01F))];
 }
 // при таком количестве палитр (9шт) каждый диапазон Масштаба (от 1 до 100) можно разбить на участки по 11 значений
@@ -1613,7 +1656,7 @@ void colorsRoutine2()
     else if (step >= deltaValue) {
       deltaHue = modes[currentMode].Scale;
 #if USE_BLYNK
-      if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U;
+      constrainCurrentEffectScale(100U);
       deltaHue = modes[currentMode].Scale * 2.55;
 #endif
 
@@ -1693,24 +1736,11 @@ void colorFaded() {
       lastUpdate = millis(); // Обновляем время
     } else {
       isEffectActive = false; // Выключаем лампу при яркости 0
-      {
-      ONflag = !ONflag;
+      // Эффект завершился: это всегда выключение, а не переключатель питания.
+      ONflag = false;
       jsonWrite(configSetup, "Power", ONflag);
-      changePower(); // Сначала выключаем матрицу
-
-      if (!ONflag)  {
-        timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
-        if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
-        save_file_changes = 7;
-        Save_File_Changes();
-    }
-    else {
-        EepromManager::EepromGet(modes);
-        timeout_save_file_changes = millis();
-        bitSet (save_file_changes, 0);
-      }
-    }
-    loadingFlag = true;
+      persistEffectSettingsBeforePowerOff();
+      changePower();
     }
   }
 
@@ -2094,7 +2124,7 @@ void lightersRoutine()
 
     loadingFlag = false;
     //randomSeed(millis());
-    if (modes[currentMode].Scale > trackingOBJECT_MAX_COUNT) modes[currentMode].Scale = trackingOBJECT_MAX_COUNT;
+    constrainCurrentEffectScale(trackingOBJECT_MAX_COUNT);
     for (uint8_t i = 0U; i < trackingOBJECT_MAX_COUNT; i++)
     {
       trackingObjectPosX[i] = random(0, WIDTH * 10);
@@ -4370,7 +4400,7 @@ void fire2012again()
     }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
-    if (modes[currentMode].Scale > 100) modes[currentMode].Scale = 100; // чтобы не было проблем при прошивке без очистки памяти
+    constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
     if (modes[currentMode].Scale > 50)
       //fire_p = firePalettes[(int)((float)modes[currentMode].Scale/12)];
       //fire_p = firePalettes[(uint8_t)((modes[currentMode].Scale % 50)/5.56F)];
@@ -4583,7 +4613,7 @@ void coloredRain() // внимание! этот эффект заточен н�
     setModeSettings(1U + random8(100U) , 165U + random8(76U));
   }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
-  if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U;
+  constrainCurrentEffectScale(100U);
   if (modes[currentMode].Scale * 2.55 > 247U)
     rain(60, 200, map8(42, 5, 100), myScale8(modes[currentMode].Scale * 2.55), solidRainColor, false, false, false);
   else
@@ -4598,7 +4628,7 @@ void simpleRain()
   }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
-  if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U;
+  constrainCurrentEffectScale(100U);
   rain(60, 180, (modes[currentMode].Scale * 2.55 - 1) * 2.58, 30, solidRainColor, true, true, false);
 }
 
@@ -4610,7 +4640,7 @@ void stormyRain()
   }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
-  if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U;
+  constrainCurrentEffectScale(100U);
   rain(60, 160, (modes[currentMode].Scale * 2.55 - 1) * 2.58, 30, solidRainColor, true, true, true);
 }
 #else
@@ -5275,6 +5305,9 @@ void clockRoutine() {
 
   if (loadingFlag)
   {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) setModeSettings(1U + random8(100U), 180U + random8(76U));
+#endif
     loadingFlag = false;
 
     hue2 = 255U;
@@ -6742,7 +6775,7 @@ void oscillatingRoutine() {
     loadingFlag = false;
     step = 0U;
     //setCurrentPalette();
-    if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U; // чтобы не было проблем при прошивке без очистки памяти
+    constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
     if (modes[currentMode].Scale <= 50U)
       curPalette = palette_arr[(uint8_t)(modes[currentMode].Scale / 50.0F * ((sizeof(palette_arr) / sizeof(TProgmemRGBPalette16 *)) - 0.01F))];
     //else
@@ -6880,7 +6913,7 @@ void fire2020Routine2() {
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
     loadingFlag = false;
-    if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U; // чтобы не было проблем при прошивке без очистки памяти
+    constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
     /*if (modes[currentMode].Scale == 100U)
       deltaValue = random8(9U);
       else
@@ -8406,7 +8439,7 @@ void Fire2021Routine() {
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
     loadingFlag = false;
-    if (modes[currentMode].Scale > 100U) modes[currentMode].Scale = 100U; // чтобы не было проблем при прошивке без очистки памяти
+    constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
     deltaValue = modes[currentMode].Scale * 0.0899;// /100.0F * ((sizeof(palette_arr) /sizeof(TProgmemRGBPalette16 *))-0.01F));
     if (deltaValue == 3U || deltaValue == 4U)
       curPalette =  palette_arr[deltaValue]; // (uint8_t)(modes[currentMode].Scale/100.0F * ((sizeof(palette_arr) /sizeof(TProgmemRGBPalette16 *))-0.01F))];
@@ -8473,7 +8506,7 @@ void lumenjerRoutine() {
     }
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
 
-    if (modes[currentMode].Scale > 100) modes[currentMode].Scale = 100; // чтобы не было проблем при прошивке без очистки памяти
+    constrainCurrentEffectScale(100U); // чтобы не было проблем при прошивке без очистки памяти
     if (modes[currentMode].Scale > 50)
       curPalette = firePalettes[(uint8_t)((modes[currentMode].Scale - 50) / 50.0F * ((sizeof(firePalettes) / sizeof(TProgmemRGBPalette16 *)) - 0.01F))];
     else
@@ -8864,6 +8897,9 @@ void squaresNdotsRoutine() {
   {
   if (loadingFlag)
   {
+#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+    if (selectedSettings) setModeSettings(1U + random8(100U), 20U + random8(221U));
+#endif
     loadingFlag = false;
     enlargedObjectNUM = (modes[currentMode].Scale - 1U) / 99.0 * (SPARK - 1U) + 1U;
     if (enlargedObjectNUM > SPARK) enlargedObjectNUM = SPARK;

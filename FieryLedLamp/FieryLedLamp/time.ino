@@ -193,7 +193,7 @@ if (stillUseNTP)
               dawnColor[j] = dawnColor[j - 1U];
           dawnColor[0] = CHSV(map(dawnPosition, 0, 255, 10, 35),
                            map(dawnPosition, 0, 255, 255, 170),
-                           map(dawnPosition, 0, 255, 2, DAWN_BRIGHT));
+                           map(dawnPosition, 0, 255, 2, effectBrightnessToFastLED(DAWN_BRIGHT)));
 
           if (dawnCounter < 5U) dawnCounter++;
           
@@ -237,6 +237,7 @@ if (stillUseNTP)
           #if USE_TM1637
           clockTicker_blink();
           #endif
+          if (!ONflag) persistEffectSettingsBeforePowerOff();
           changePower();                                                  // выключение матрицы или установка яркости текущего эффекта в засисимости от того, была ли включена лампа до срабатывания будильника
         }
 #if USE_TM1637
@@ -275,7 +276,7 @@ if (stillUseNTP)
               sunsetColor[j] = sunsetColor[j - 1U];
           sunsetColor[0] = CHSV(map(sunsetPosition, 0, 255, 10, 35),
                            map(sunsetPosition, 0, 255, 255, 170),
-                           map(sunsetPosition, 0, 255, 2, SUNSET_BRIGHT));
+                           map(sunsetPosition, 0, 255, 2, effectBrightnessToFastLED(SUNSET_BRIGHT)));
 
           if (sunsetCounter < 5U) sunsetCounter++;
           
@@ -311,6 +312,8 @@ if (stillUseNTP)
           clockTicker_blink();
           #endif
           ONflag = false;
+          jsonWrite(configSetup, "Power", ONflag);
+          persistEffectSettingsBeforePowerOff();
           changePower();
     }
         
@@ -493,23 +496,19 @@ void tm1637_brightness ()   {  // установка яркости в зави�
   if (NIGHT_HOURS_START >= NIGHT_HOURS_STOP)                          // ночное время включает переход через полночь
   {
     if (thisTime >= NIGHT_HOURS_START || thisTime <= NIGHT_HOURS_STOP)   {  // период действия ночного времени
-       if (!NIGHT_HOURS_BRIGHTNESS)  DispBrightness = 0;
-       else  DispBrightness = NIGHT_HOURS_BRIGHTNESS;
+       DispBrightness = brightnessPercentToByte(NIGHT_HOURS_BRIGHTNESS);
     }
     else   {
-      if (!DAY_HOURS_BRIGHTNESS) DispBrightness = 0;
-      else DispBrightness = DAY_HOURS_BRIGHTNESS;
+      DispBrightness = brightnessPercentToByte(DAY_HOURS_BRIGHTNESS);
     }
   }
   else                                                                // ночное время не включает переход через полночь
   {
     if (thisTime >= NIGHT_HOURS_START && thisTime <= NIGHT_HOURS_STOP)   {// период действия ночного времени
-       if (!NIGHT_HOURS_BRIGHTNESS)  DispBrightness = 0;
-       else  DispBrightness = NIGHT_HOURS_BRIGHTNESS;
+       DispBrightness = brightnessPercentToByte(NIGHT_HOURS_BRIGHTNESS);
     }
     else   {
-      if (!DAY_HOURS_BRIGHTNESS) DispBrightness = 0;
-      else DispBrightness = DAY_HOURS_BRIGHTNESS;
+      DispBrightness = brightnessPercentToByte(DAY_HOURS_BRIGHTNESS);
     }
   }
 }
@@ -524,7 +523,7 @@ void Save_File_Changes() {
         //save_file_changes = 0;
         switch (save_file_changes) {
         case 1:
-            writeFile(F("config.json"), configSetup );
+            saveConfig();
             save_file_changes = 0;
             break;
         case 2:
@@ -535,7 +534,7 @@ void Save_File_Changes() {
         case 3:
             save_alarms();
             save_sunsets();
-            writeFile(F("config.json"), configSetup );
+            saveConfig();
             save_file_changes = 0;
             break;
         case 4:
@@ -544,7 +543,7 @@ void Save_File_Changes() {
             break;
         case 5:
             cycle_get();
-            writeFile(F("config.json"), configSetup );
+            saveConfig();
             save_file_changes = 0;
             break;
         case 6:
@@ -557,7 +556,7 @@ void Save_File_Changes() {
             save_alarms();
             save_sunsets();
             cycle_get();
-            writeFile(F("config.json"), configSetup );
+            saveConfig();
             save_file_changes = 0;
             break;
         }

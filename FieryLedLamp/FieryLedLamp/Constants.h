@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION      " v7.6"
+#define VERSION      " v7.7"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -93,7 +93,6 @@ extern uint8_t ledDataLines;                                // 1 или 2 DATA-�
 // =============  РАЗНОЕ  ========================================================================
 #define ESP_CONF_TIMEOUT        (60U)                       // Время в секундах, которое лампа будет ждать от вас ввода пароля для ОТА обновления (пароль совпадает с паролем точки доступа)
 #define INTERNET_CHECK_PERIOD   (60UL)                      // Период повторной проверки наличия интернета в секундах
-#define USE_DEFAULT_SETTINGS_RESET 1                        // Сброс настроек эффектов: 0 - откл, 1 - вкл
 #if USE_MQTT
 #define MQTT_RECONNECT_TIME   (10U)                         // Время в секундах перед подключением к брокеру MQTT в случае потери подключения
 #endif
@@ -275,150 +274,11 @@ extern uint8_t ledDataLines;                                // 1 или 2 DATA-�
 
 #define MODE_AMOUNT         (134U)    // количество режимов
 
-// =============  МАССИВ НАСТРОЕК ЭФФЕКТОВ ПО УМОЛЧАНИЮ=============================================
-// формат записи:
-//{ Яркость, Скорость, Масштаб}
-
-static const uint8_t defaultSettings[][3] PROGMEM = {
-  {  10,   1,  50}, // Бeлый cвeт
-  {  35,  90,  50}, // Аврора
-  {  25, 200,  65}, // Акварель
-  {  20, 215,  60}, // Аленький цветочек
-  {  20,  11,   3}, // Бабочка
-  {  25, 185,  63}, // Бассейн
-  {  20, 215,  90}, // Бамбук
-  {  35,  20,  60}, // Безумие
-  {  20, 150,  50}, // Блуждающий кубик
-  {  30, 212,  54}, // Водопад
-  {  20, 195,  22}, // Водопад 4в1
-  {  40, 233,  80}, // Волны
-  {  45, 175,  60}, // Волшебный Фонарик
-  {  80, 205,  40}, // Вино
-  {  25, 210,   1}, // Вихри пламени
-  {  20, 210,  86}, // Вихри разноцветные
-  {  55, 191,  54}, // Вьюга
-  {  40, 210,   8}, // Гроза в банке
-  {  30,  80,  95}, // ДНК
-  {  25, 195, 100}, // Дым
-  {  25, 190,  30}, // Дым разноцветный
-  {  30, 170,  25}, // Дымовые шашки
-  {  20, 110,   1}, // Жидкая лампа
-  {  20, 124,  39}, // Жидкая лампа авто
-  {  30, 195,  30}, // Завиток
-  {  25, 215,  99}, // Звезды
-  {  25,  18,  26}, // Звезды Новые
-  {  15,   8,  21}, // Зебра
-  {  20, 212,  76}, // Земля Тикси
-  {  25, 100,  60}, // Змейка
-  {  20,  40,  15}, // Змейки
-  {  25, 233,  30}, // Источник
-  {  20, 200,  55}, // Капли на воде
-  {  20,  40,  59}, // Капли на стекле
-  {  15, 240,  18}, // Кипение
-  {  30, 205,  91}, // Кодовый замок
-  {  20, 205,  28}, // Комета
-  {  20, 212,  69}, // Комета одноцветная
-  {  25, 186,  19}, // Комета двойная
-  {  25, 186,   9}, // Комета тройная
-  {  25, 200,  60}, // Контакты
-  {  30, 142,  63}, // Конфетти
-  {  45, 222,  92}, // Кубик Рубика
-  {  15,   9,  24}, // Лава
-  {  15, 240,   1}, // Лавовая лампа
-  {  30,  61,  20}, // Лампа с мотыльками
-  {  15,  15,  95}, // Лес
-  {  20, 200,  40}, // Люмeньep
-  {  16, 205,  20}, // Магма
-  {  20, 140,  35}, // Марио
-  {  15, 195,  50}, // Масляные краски
-  {  25, 186,  23}, // Матрица
-  {  25, 235,   4}, // Мерцание
-  {  15,  72,   3}, // Метоболз
-  {  28,  70,  20}, // Мечта дизайнера
-  {  15, 205,  50}, // Мозайка
-  {  20,  61,  20}, // Moтыльки
-  {  15, 255,  26}, // Мячики
-  {  25, 255,  85}, // Мячики без границ
-  {  30, 165,  30}, // Новогодняя Елка
-  {  35,  50,  25}, // Ночной Город
-  {  25, 210,   1}, // Огонь
-  {  15, 220,  63}, // Огонь 2012
-  {  30, 220,  15}, // Огонь 2018
-  {  20, 225,  11}, // Огонь 2020
-  {  25, 150,  22}, // Огонь 2021
-  {  26, 190,  15}, // Огoнь верховой
-  {  30, 200,  15}, // Огoнь парящий
-  {  30,  80,  64}, // Огонь с искрами
-  {  20, 205, 149}, // Осадки
-  {  15, 208, 100}, // Осциллятор
-  {  20,  15,  34}, // Облака
-  {  20,   8,  12}, // Океан
-  {  15, 200,  51}, // Осьминог
-  {  20,   5,  12}, // Павлин
-  {  20, 150,   1}, // Песочные часы
-  {  25, 195,   1}, // Пейнтбол
-  {  15, 220,  40}, // Пикассо
-  {  10,  20,  35}, // Плазма
-  {  10,  30,  82}, // Плазменная лампа
-  {  15,  15,  50}, // Плазменные волны
-  {  30,  45,   3}, // Пламя
-  {  25, 128,  75}, // Планета Земля
-  {  40, 165,  30}, // Побочный эффект
-  {  10,  70,  16}, // Попкорн
-  {  15, 100,  88}, // Призмата
-  {  20, 205,  65}, // Притяжение
-  {  25, 203,   5}, // Пpыгyны
-  {  20, 185,   6}, // Пульс
-  {  20, 179,  11}, // Пульс белый
-  {  20, 185,  31}, // Пульс радужный
-  {  15, 220,  50}, // Радиальная волна
-  {  10, 215,  50}, // Радуга
-  {  10,  13,  60}, // Радуга 3D
-  {  40, 200,  40}, // Радужное Пятно
-  {  20, 128,  25}, // Радужные кольца
-  {  15, 205, 100}, // Радужный змей
-  {  15, 205,   1}, // Разноцветный дождь
-  {  20,  50,  90}, // Разноцветные одуванчики
-  {  12, 175,  50}, // Реки Ботсваны
-  {  15, 180,  23}, // Светлячки
-  {  15, 185,  93}, // Светлячки со шлейфом
-  {  20, 220,   8}, // Свеча
-  {  15, 160,  64}, // Северное сияние
-  {  15,  75,  50}, // Серпантин
-  {  50, 230,  40}, // Сканер
-  {  20, 127,  75}, // Синусоид
-  {  25, 240,   1}, // Смена цвета
-  {  10, 205,  90}, // Снегопад
-  {  25, 175, 100}, // Спектрум
-  {  15,  45,   3}, // Спирали
-  {  15, 136,   4}, // Стая
-  {  15, 128,  80}, // Стая и хищник
-  {  80, 165,  40}, // Стрелки
-  {  25,   1,  45}, // Строб.Хаос.Дифузия
-  {  50, 160,   1}, // Тени
-  {  20, 127, 100}, // Тихий океан
-  {  15, 127,  50}, // Торнадо
-  {  50, 210,   2}, // Tyчкa в банке
-  {  25, 180,  70}, // Фейерверк
-  {  15, 240,  75}, // Фейерверк 2
-  {  20, 212,  85}, // Фея
-  {  40, 250,  75}, // Фонтан
-  {  20,  55,  13}, // Флаг (Триколор)
-  {  20, 240,  65}, // Цвет
-  {  20, 127,  92}, // Цветной Питон
-  {  15, 195,  80}, // Цветные драже
-  {  25, 128,  60}, // Цветные кудри
-  {  15, 150,  45}, // Цветок лотоса
-  {  15, 215,  35}, // Цифровая турбулентность
-  {  20,  50,   5}, // Шapы
-  {  25,  85,  20}, // Nexus
-  {   2,   1,   3}, // Цвет с затуханием
-  {  30, 214,  80}  // Часы
-}; // ^-- проверьте, чтобы у предыдущей строки не было запятой после скобки
-
-// ------------ ОШИБАТЬСЯ НЕЛЬЗЯ!!!   ------------------------------------------------
-
-// ============= КОНЕЦ МАССИВА =====
+// Настройки эффектов по умолчанию находятся в effect.ini.
+// Формат: номер;яркость;скорость;масштаб/цвет;название
+#define EFFECT_SETTINGS_FILE        ("/effect.ini")
+#define EFFECT_SETTINGS_TEMP_FILE   ("/effect.tmp")
+#define EFFECT_SETTINGS_BACKUP_FILE ("/effect.bak")
 
 // === ОСТАЛЬНОЕ ДЛЯ РАЗРАБОТЧИКОВ =====
 
@@ -452,6 +312,26 @@ uint16_t dynamicFrameDelay();
 
 #define BRIGHTNESS            (40U)                         // стандартная маскимальная яркость (0-255). используется только в момент включения питания лампы
 
+#define BRIGHTNESS_PERCENT_MAX (100U)
+#define EFFECT_BRIGHTNESS_MAX  BRIGHTNESS_PERCENT_MAX
+
+static inline uint8_t brightnessPercentToByte(uint8_t brightness)
+{
+  brightness = constrain(brightness, 1U, BRIGHTNESS_PERCENT_MAX);
+  return (uint8_t)(((uint16_t)brightness * 255U + 50U) / 100U);
+}
+
+static inline uint8_t brightnessByteToPercent(uint8_t brightness)
+{
+  if (!brightness) return 1U;
+  return (uint8_t)constrain(((uint16_t)brightness * 100U + 127U) / 255U, 1U, BRIGHTNESS_PERCENT_MAX);
+}
+
+static inline uint8_t effectBrightnessToFastLED(uint8_t brightness)
+{
+  return brightnessPercentToByte(brightness);
+}
+
 // Порты
 #define ESP_HTTP_PORT         (80U)                         // номер порта, который будет использоваться во время первой утановки имени WiFi сети (и пароля), к которой потом будет подключаться лампа в режиме WiFi клиента (лучше не менять)
 #define ESP_UDP_PORT          (8888U)                       // номер порта, который будет "слушать" UDP сервер во время работы лампы как в режиме WiFi точки доступа, так и в режиме WiFi клиента (лучше не менять)
@@ -477,10 +357,10 @@ uint16_t dynamicFrameDelay();
 
 
 // --- РАССВЕТ -------------------------
-uint8_t DAWN_BRIGHT ;                                       // максимальная яркость рассвета (0-255)
+uint8_t DAWN_BRIGHT ;                                       // максимальная яркость рассвета (1-100)
 uint8_t DAWN_TIMEOUT;                                       // сколько рассвет светит после времени будильника, минут. Может быть изменено в установках будильника
 // --- ЗАКАТ -------------------------
-uint8_t SUNSET_BRIGHT ;                                     // максимальная яркость заката (0-255)
+uint8_t SUNSET_BRIGHT ;                                     // максимальная яркость заката (1-100)
 
 
 //#define MAX_UDP_BUFFER_SIZE (UDP_TX_PACKET_MAX_SIZE + 1)
@@ -503,14 +383,19 @@ uint8_t SUNSET_BRIGHT ;                                     // максимал�
 //#include <EEPROM.h>
 //#include "Types.h"
 #define EEPROM_PASSWORD_START_ADDRESS           (0U)            // начальный адрес в EEPROM памяти для записи пароля к роутеру
+#define EEPROM_EFFECTS_MAGIC_ADDRESS            (0x40U)         // сигнатура блока параметров эффектов
+#define EEPROM_EFFECTS_VERSION_ADDRESS          (0x41U)         // версия формата блока параметров эффектов
+#define EEPROM_EFFECTS_COUNT_ADDRESS            (0x42U)         // количество записанных эффектов
+#define EEPROM_EFFECTS_CRC_ADDRESS              (0x44U)         // CRC32 массива modes[] (4 байта)
 #define EEPROM_MODES_START_ADDRESS              (0x50U)         // начальный адрес в EEPROM памяти для записи настроек эффектов (яркость, скорость, масштаб)
-#define EEPROM_FIRST_RUN_ADDRESS                (0x40U)         // (0x40U) адрес в EEPROM памяти для записи признака первого запуска (определяет необходимость первоначальной записи всех хранимых настроек)
 #define EEPROM_MODE_STRUCT_SIZE                 (3U)            // 1 байт - яркость; 1 байт - скорость; 1 байт - масштаб
 #define EEPROM_TOTAL_BYTES_USED_BASE            (EEPROM_MODES_START_ADDRESS+MODE_AMOUNT*EEPROM_MODE_STRUCT_SIZE+1)
 #define EEPROM_WIFI_BACKUP_START_ADDRESS        (EEPROM_TOTAL_BYTES_USED_BASE)
 #define EEPROM_WIFI_BACKUP_SIZE                 (512U)
 #define EEPROM_TOTAL_BYTES_USED                 (EEPROM_WIFI_BACKUP_START_ADDRESS + EEPROM_WIFI_BACKUP_SIZE)
-#define EEPROM_FIRST_RUN_MARK                   (MODE_AMOUNT-255) // число-метка, если ещё не записно в EEPROM_FIRST_RUN_ADDRESS, значит нужно проинициализировать EEPROM и записать все первоначальные настройки
+#define EEPROM_EFFECTS_MAGIC                    (0xA5U)
+#define EEPROM_EFFECTS_LAYOUT_VERSION           (1U)
+#define EEPROM_LEGACY_FIRST_RUN_MARK            ((uint8_t)(MODE_AMOUNT + 1U))
 #define EEPROM_WIFI_BACKUP_MAGIC                (0x57494649UL)   // WIFI
 #define EEPROM_WIFI_BACKUP_VERSION              (1U)
 #define EEPROM_WIFI_BACKUP_PENDING_MARK         (0xA5U)
@@ -550,8 +435,8 @@ bool inClockWeatherMode = false;
 // --- ВЫВОД ВРЕМЕНИ БЕГУЩЕЙ СТРОКОЙ ---
 unsigned int NIGHT_HOURS_START;                             // Начало ночного времени
 unsigned int NIGHT_HOURS_STOP;                              // Завершение ночного времени
-unsigned int DAY_HOURS_BRIGHTNESS;                          // Начало дневного времени
-unsigned int NIGHT_HOURS_BRIGHTNESS;                        // Завершение дневного времени
+unsigned int DAY_HOURS_BRIGHTNESS;                          // Яркость днём (1-100)
+unsigned int NIGHT_HOURS_BRIGHTNESS;                        // Яркость ночью (1-100)
 
 // Функции JSON (ArduinoJSON Version 6.19.4)
 // ------------- Чтение значения json String
@@ -633,7 +518,19 @@ String writeFile(const String& fileName, String& strings ) {
   return "Write sucsses";
 }
 void saveConfig (){
-  writeFile(F("config.json"), configSetup );
+  DynamicJsonDocument doc(4096);
+  const DeserializationError error = deserializeJson(doc, configSetup);
+  if (error) {
+    LOG.print(F("Не удалось подготовить config.json: "));
+    LOG.println(error.c_str());
+    return;
+  }
+  doc.remove("br");
+  doc.remove("sp");
+  doc.remove("sc");
+  String persistentConfig;
+  serializeJson(doc, persistentConfig);
+  writeFile(F("config.json"), persistentConfig);
 }
 // ------------- Чтение файла в строку
 String readFile(const String& fileName, size_t len ) {
@@ -651,9 +548,25 @@ String readFile(const String& fileName, size_t len ) {
   return temp;
 }
 
+bool resetCurrentEffectToDefaults();
+bool applyPendingRandomEffectSettings();
 #if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
-void setModeSettings(uint8_t Scale = 0U, uint8_t Speed = 0U);
+bool setModeSettings(uint16_t Scale, uint16_t Speed);
 #endif //#if defined(USE_RANDOM_SETS_IN_APP) || defined(RANDOM_SETTINGS_IN_CYCLE_MODE)
+bool resetAllEffectsToDefaults();
+
+void syncCurrentEffectToConfig();
+extern bool effectSettingsDirty;
+extern uint32_t effectSettingsChangedAt;
+extern uint32_t effTimer;
+void markEffectSettingsChanged();
+void handleEffectSettingsPersistence();
+bool saveEffectSettingsNow(bool force = false);
+bool restoreEffectSettingsForPowerOn();
+void persistEffectSettingsBeforePowerOff();
+uint8_t effectScaleStepMaximum(uint8_t effectIndex);
+void constrainCurrentEffectScale(uint8_t maximum);
+String getEffectSettingsErrorJson();
 
 #if USE_MULTIPLE_LAMPS_CONTROL
 void multiple_lamp_control ();

@@ -273,7 +273,7 @@ uint8_t getBrightnessForPrintTime()     // определение яркости
   if (!timeSynched)  
   {
     day_night = false;
-    return modes[currentMode].Brightness;
+    return effectBrightnessToFastLED(modes[currentMode].Brightness);
   }
 
   if (NIGHT_HOURS_START >= NIGHT_HOURS_STOP)                          // ночное время включает переход через полночь
@@ -281,7 +281,7 @@ uint8_t getBrightnessForPrintTime()     // определение яркости
     if (thisTime >= NIGHT_HOURS_START || thisTime <= NIGHT_HOURS_STOP)// период действия ночного времени
     {
         day_night = false;
-        return NIGHT_HOURS_BRIGHTNESS;
+        return brightnessPercentToByte(NIGHT_HOURS_BRIGHTNESS);
     }
   }
   else                                                                // ночное время не включает переход через полночь
@@ -289,17 +289,17 @@ uint8_t getBrightnessForPrintTime()     // определение яркости
     if (thisTime >= NIGHT_HOURS_START && thisTime <= NIGHT_HOURS_STOP)// период действия ночного времени
     {
         day_night = false;
-        return NIGHT_HOURS_BRIGHTNESS;
+        return brightnessPercentToByte(NIGHT_HOURS_BRIGHTNESS);
     }
   }
 
   day_night = true;
-  return DAY_HOURS_BRIGHTNESS;                                   // дневное время
+  return brightnessPercentToByte(DAY_HOURS_BRIGHTNESS);          // дневное время
 
   #endif
 
   day_night = false;
-  return modes[currentMode].Brightness;
+  return effectBrightnessToFastLED(modes[currentMode].Brightness);
 }
 
 

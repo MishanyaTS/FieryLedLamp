@@ -13,7 +13,7 @@ void buttonTick()
         LOG.println("\n*** Reset to Default ***");
         showWarning(CRGB::Red, 500, 250U);
         esp_task_wdt_reset();
-        setModeSettings();
+        resetCurrentEffectToDefaults();
         updateSets();    
         if(FileCopy (F("/default/config.json"), F("/config.json"))) {
             esp_task_wdt_reset();
@@ -55,6 +55,7 @@ void buttonTick()
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
+            saveEffectSettingsNow(false);
             changePower();
        }
        return;
@@ -75,6 +76,7 @@ void buttonTick()
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
+            saveEffectSettingsNow(false);
             changePower();
        }
        return;
@@ -83,21 +85,17 @@ void buttonTick()
     {
       ONflag = !ONflag;
       jsonWrite(configSetup, "Power", ONflag);
-      changePower(); // Сначала выключаем матрицу
-
       if (!ONflag)  {
-        timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
-        if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
-        save_file_changes = 7;
-        Save_File_Changes();
-    }
-    else {
-        EepromManager::EepromGet(modes);
+        persistEffectSettingsBeforePowerOff();
+        changePower();
+      }
+      else {
+        restoreEffectSettingsForPowerOn();
         timeout_save_file_changes = millis();
         bitSet (save_file_changes, 0);
+        changePower();
       }
     }
-    loadingFlag = true;
 
     #if USE_MQTT
     if (espMode == 1U)
@@ -176,7 +174,10 @@ void buttonTick()
     loadingFlag = true;
 
       if (random_on && FavoritesManager::FavoritesRunning)
+      {
         selectedSettings = 1U;
+        applyPendingRandomEffectSettings();
+      }
 
     #if USE_MQTT
     if (espMode == 1U)
@@ -220,7 +221,10 @@ void buttonTick()
     loadingFlag = true;
 
       if (random_on && FavoritesManager::FavoritesRunning)
+      {
         selectedSettings = 1U;
+        applyPendingRandomEffectSettings();
+      }
 
     #if USE_MQTT
     if (espMode == 1U)
@@ -242,6 +246,7 @@ void buttonTick()
     #if USE_OTA
     if (otaManager.RequestOtaUpdate())
     {
+      if (!ONflag) restoreEffectSettingsForPowerOn();
       ONflag = true;
       jsonWrite(configSetup, "Power", ONflag);
       currentMode = EFF_MATRIX;                             // принудительное включение режима "Матрица" для индикации перехода в режим обновления по воздуху
@@ -260,7 +265,7 @@ void buttonTick()
       if (!dawnFlag) {
         // мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
         showWarning(CRGB::Blue, 1000, 250U);                    // мигание синим цветом 1 секунду
-        //if (!ONflag) EepromManager::EepromGet(modes);
+        if (!ONflag) restoreEffectSettingsForPowerOn();
         ONflag = true;
         changePower();
         jsonWrite(configSetup, "Power", ONflag);
@@ -422,15 +427,16 @@ if (touch.isStep()){
     {
       case 0U:                                              // просто удержание (до удержания кнопки кликов не было) - изменение яркости
       {
-        uint8_t delta = modes[currentMode].Brightness < 10U // определение шага изменения яркости: при яркости [1..10] шаг = 1, при [11..16] шаг = 3, при [17..255] шаг = 15
+        uint8_t delta = modes[currentMode].Brightness < 10U // определение шага изменения яркости: при яркости [1..9] шаг = 1, при [10..100] шаг = 5
           ? 1U
           : 5U;
         modes[currentMode].Brightness =
           constrain(brightDirection
             ? modes[currentMode].Brightness + delta
             : modes[currentMode].Brightness - delta,
-          1, 255);
+          1, EFFECT_BRIGHTNESS_MAX);
         jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+        markEffectSettingsChanged();
         SetBrightness(modes[currentMode].Brightness);
         #if USE_TM1637
         DisplayFlag = 3;
@@ -454,6 +460,7 @@ if (touch.isStep()){
       {
         modes[currentMode].Speed = constrain(brightDirection ? modes[currentMode].Speed + 1 : modes[currentMode].Speed - 1, 1, 255);
         jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+        markEffectSettingsChanged();
         loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
 
         #if GENERAL_DEBUG
@@ -478,8 +485,11 @@ if (touch.isStep()){
 
       case 2U:                                              // удержание после двух кликов - изменение масштаба
       {
-        modes[currentMode].Scale = constrain(brightDirection ? modes[currentMode].Scale + 1 : modes[currentMode].Scale - 1, 1, 100);
+        modes[currentMode].Scale = constrain(
+            brightDirection ? modes[currentMode].Scale + 1 : modes[currentMode].Scale - 1,
+            1, effectScaleStepMaximum(currentMode));
         jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+        markEffectSettingsChanged();
         loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
 
         #if GENERAL_DEBUG
@@ -509,6 +519,7 @@ if (touch.isStep()){
           Button_Holding = true;
           // мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
           showWarning(CRGB::Blue, 1500U, 250U);                    // мигание синим цветом 1 секунду
+          if (!ONflag) restoreEffectSettingsForPowerOn();
           ONflag = true;
           changePower();
           jsonWrite(configSetup, "Power", ONflag);
@@ -528,7 +539,7 @@ if (touch.isStep()){
       {
           showWarning(CRGB::Red, 500, 250U);
           esp_task_wdt_reset();
-          setModeSettings();
+          resetCurrentEffectToDefaults();
           updateSets();    
           if(FileCopy (F("/default/config.json"), F("/config.json"))){
             esp_task_wdt_reset();
@@ -546,7 +557,7 @@ if (touch.isStep()){
       {
           showWarning(CRGB::Red, 500, 250U);
           esp_task_wdt_reset();
-          setModeSettings();
+          resetAllEffectsToDefaults();
           updateSets();    
           if(FileCopy (F("/default/config.json"), F("/config.json"))) {
             esp_task_wdt_reset();
@@ -648,6 +659,7 @@ if (touch.isStep()){
       case 0U:                                              // просто удержание (до удержания кнопки кликов не было) - белый свет
       {
         Button_Holding = true;
+        if (!ONflag) restoreEffectSettingsForPowerOn();
         currentMode = EFF_WHITE_COLOR;
     jsonWrite(configSetup, "eff_sel", currentMode);
         jsonWrite(configSetup, "br", modes[currentMode].Brightness);
@@ -668,7 +680,7 @@ if (touch.isStep()){
           Button_Holding = true;
           // мигать об успехе операции лучше до вызова changePower(), иначе сперва мелькнут кадры текущего эффекта
           showWarning(CRGB::Blue, 1500U, 250U);                    // мигание синим цветом 1 секунду
-          //EepromManager::EepromGet(modes);
+          if (!ONflag) restoreEffectSettingsForPowerOn();
           ONflag = true;
           changePower();
           jsonWrite(configSetup, "Power", ONflag);

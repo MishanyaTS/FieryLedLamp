@@ -258,6 +258,7 @@ void IR_Power()   {
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
+            saveEffectSettingsNow(false);
             changePower();
        }
        return;
@@ -279,6 +280,7 @@ void IR_Power()   {
             clockTicker_blink();
             #endif
             SetBrightness(modes[currentMode].Brightness);
+            saveEffectSettingsNow(false);
             changePower();
        }
        return;
@@ -287,20 +289,17 @@ void IR_Power()   {
     {
         ONflag = !ONflag;
         jsonWrite(configSetup, "Power", ONflag);
-        changePower(); // Сначала выключаем матрицу
         if (!ONflag) {
-            timeout_save_file_changes = millis() - SAVE_FILE_DELAY_TIMEOUT;
-            if (!FavoritesManager::FavoritesRunning) EepromManager::EepromPut(modes);
-            save_file_changes = 7;
-            Save_File_Changes();
+            persistEffectSettingsBeforePowerOff();
+            changePower();
         }
         else {
-            //EepromManager::EepromGet(modes);
+            restoreEffectSettingsForPowerOn();
             timeout_save_file_changes = millis();
             bitSet(save_file_changes, 0);
+            changePower();
         }       
     }
-    loadingFlag = true;
 
     #if USE_MQTT
     if (espMode == 1U)
@@ -406,7 +405,10 @@ void Prev_Next_eff(bool direction)   {
       TFT_Display_Timer();
     #endif
     if (random_on && FavoritesManager::FavoritesRunning)
+    {
         selectedSettings = 1U;
+        applyPendingRandomEffectSettings();
+    }
     #if USE_MQTT
     if (espMode == 1U)
     {
@@ -430,12 +432,9 @@ void Cycle_on_off()   {
         FavoritesManager::FavoritesRunning = tmp;
         if (tmp){
             showWarning(CRGB::Blue, 500, 250U);        // мигание синим цветом 0.5 секунды
-            EepromManager::EepromPut(modes);
-            //eepromTimeout = millis() - EEPROM_WRITE_DELAY;
         }
         else {
             showWarning(CRGB::Red, 500, 250U);        // мигание красным цветом 0.5 секунды
-            //EepromManager::EepromGet(modes);
         }
         #if USE_MQTT
         if (espMode == 1U)
@@ -448,8 +447,9 @@ void Cycle_on_off()   {
 
 void Bright_Up_Down(bool direction)   {
     uint8_t delta = IR_Data_Ready == 1 ? 1U : 4U;
-    modes[currentMode].Brightness = constrain(direction ? modes[currentMode].Brightness + delta : modes[currentMode].Brightness - delta, 1, 255);
+    modes[currentMode].Brightness = constrain(direction ? modes[currentMode].Brightness + delta : modes[currentMode].Brightness - delta, 1, EFFECT_BRIGHTNESS_MAX);
     jsonWrite(configSetup, "br", modes[currentMode].Brightness);
+    markEffectSettingsChanged();
     SetBrightness(modes[currentMode].Brightness);
     #if USE_TM1637
     DisplayFlag = 3;
@@ -481,6 +481,7 @@ void Speed_Up_Down(bool direction)   {
     uint8_t delta = IR_Data_Ready == 1 ? 1U : 4U;
     modes[currentMode].Speed = constrain(direction ? modes[currentMode].Speed + delta : modes[currentMode].Speed - delta, 1, 255);
     jsonWrite(configSetup, "sp", modes[currentMode].Speed);
+    markEffectSettingsChanged();
     loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
     #if USE_TM1637
     DisplayFlag = 3;
@@ -510,8 +511,11 @@ void Speed_Up_Down(bool direction)   {
 
 void Scale_Up_Down(bool direction)   {
     uint8_t delta = IR_Data_Ready == 1 ? 1U : 2U;
-    modes[currentMode].Scale = constrain(direction ? modes[currentMode].Scale + delta : modes[currentMode].Scale - delta, 1, 100);
+    modes[currentMode].Scale = constrain(
+        direction ? modes[currentMode].Scale + delta : modes[currentMode].Scale - delta,
+        1, effectScaleStepMaximum(currentMode));
     jsonWrite(configSetup, "sc", modes[currentMode].Scale);
+    markEffectSettingsChanged();
     loadingFlag = true; // без перезапуска эффекта ничего и не увидишь
     #if USE_TM1637
     DisplayFlag = 3;
@@ -633,16 +637,19 @@ void Current_Eff_Rnd_Def(bool direction)   {
     if (direction) {
     selectedSettings = 1U;
     updateSets();
+    applyPendingRandomEffectSettings();
     #if USE_MULTIPLE_LAMPS_CONTROL
     repeat_multiple_lamp_control = true;
     #endif  //USE_MULTIPLE_LAMPS_CONTROL
     }
     else {
-    setModeSettings();
-    updateSets();    
-    #if USE_MULTIPLE_LAMPS_CONTROL
-    repeat_multiple_lamp_control = true;
-    #endif  //USE_MULTIPLE_LAMPS_CONTROL
+    if (resetCurrentEffectToDefaults()) {
+      SetBrightness(modes[currentMode].Brightness);
+      updateSets();
+      #if USE_MULTIPLE_LAMPS_CONTROL
+      repeat_multiple_lamp_control = true;
+      #endif  //USE_MULTIPLE_LAMPS_CONTROL
+    }
     }
     if (direction) showWarning(CRGB::Blue, 500, 250U);  // мигание синим цветом 0.5 секунды
     else showWarning(CRGB::Red, 500, 250U);             // мигание красным цветом 0.5 секунды

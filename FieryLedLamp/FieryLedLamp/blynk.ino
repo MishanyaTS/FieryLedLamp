@@ -23,7 +23,7 @@ BLYNK_WRITE(V0)
   updateRemoteBlynkParams();
 }
 
-// бегунок яркости от 1 до 255
+// бегунок яркости от 1 до 100 процентов
 BLYNK_WRITE(V1)
 {
   processParams("BRI", param.asString());
@@ -180,30 +180,15 @@ void processParams(char *prefix, const char *paramValue)
   char charBuf[50];
   String value = prefix + String(paramValue);
   value.toCharArray(charBuf, 50);
-  processInputBuffer(charBuf, NULL, false);
+  processInputBuffer(charBuf, NULL, false, 0U);
   
-  // добавляем сброс настроек на значения по умолчанию при выборе всех единичек на всех бегунках
-  if (modes[currentMode].Brightness == 1U && modes[currentMode].Speed == 1U && modes[currentMode].Scale == 1U) {
-    restoreSettings();
-    loadingFlag = true;
-    //settChanged = true;
-    //eepromTimeout = millis();
-    #if USE_MQTT
-    if (espMode == 1U)
-    {
-      MqttManager::needToPublish = true;
-    }
-    #endif
-    SetBrightness(modes[currentMode].Brightness);    
-    
-    updateRemoteBlynkParams();
-  }
   #if USE_OTA
-  else if ((currentMode == MODE_AMOUNT - 1U) && modes[currentMode].Brightness == 255U && modes[currentMode].Speed == 255U && modes[currentMode].Scale == 100U){
+  if ((currentMode == MODE_AMOUNT - 1U) && modes[currentMode].Brightness == EFFECT_BRIGHTNESS_MAX && modes[currentMode].Speed == 255U && modes[currentMode].Scale == 100U){
     // добавляем включение прошивки по воздуху
       modes[currentMode].Brightness = 10U;
       modes[currentMode].Speed      = 99U;
       modes[currentMode].Scale      = 38U;
+      markEffectSettingsChanged();
       jsonWrite(configSetup, "br", modes[currentMode].Brightness);
       jsonWrite(configSetup, "sp", modes[currentMode].Speed);
       jsonWrite(configSetup, "sc", modes[currentMode].Scale);
@@ -212,6 +197,7 @@ void processParams(char *prefix, const char *paramValue)
       //if (otaManager.RequestOtaUpdate()) по идее, нужен положительный ответ от менеджера, но он не поступает с первого раза...
       otaManager.RequestOtaUpdate();
       //{
+        if (!ONflag) restoreEffectSettingsForPowerOn();
         currentMode = EFF_MATRIX;                             // принудительное включение режима "Матрица" для индикации перехода в режим обновления по воздуху
         jsonWrite(configSetup, "eff_sel", currentMode);
         FastLED.clear();

@@ -60,7 +60,7 @@ class FavoritesManager
         buff[0] = '\0';
       }
 
-      statusText += '\0';
+      // strcat/strcat_P уже оставляют завершающий ноль.
     }
 
     static void ConfigureFavorites(const char* statusText)  // принимает statusText, парсит его и инициализирует свойства класса значениями из statusText'а
@@ -150,7 +150,7 @@ class FavoritesManager
     static bool isStatusTextCorrect(const char* statusText) // валидирует statusText (проверяет, правильное ли количество компонентов он содержит)
     {
       char buff[MAX_UDP_BUFFER_SIZE];
-      strcpy(buff, statusText);
+      strlcpy(buff, statusText, sizeof(buff));
 
       uint8_t lexCount = 0;
       char* p = strtok(buff, " ");
@@ -179,8 +179,7 @@ class FavoritesManager
     {
       char lexem[2];
       memset(lexem, 0, 2);
-      strcpy(lexem, getLexNo(statusText, 1));
-      return lexem != NULL
+      return getLexNo(statusText, 1, lexem, sizeof(lexem))
         ? !strcmp(lexem, "1")
         : 0;
     }
@@ -189,8 +188,7 @@ class FavoritesManager
     {
       char lexem[6];
       memset(lexem, 0, 6);
-      strcpy(lexem, getLexNo(statusText, 2));
-      return lexem != NULL
+      return getLexNo(statusText, 2, lexem, sizeof(lexem))
         ? atoi((const char*)lexem)
         : DEFAULT_FAVORITES_INTERVAL;
     }
@@ -199,8 +197,7 @@ class FavoritesManager
     {
       char lexem[6];
       memset(lexem, 0, 6);
-      strcpy(lexem, getLexNo(statusText, 3));
-      return lexem != NULL
+      return getLexNo(statusText, 3, lexem, sizeof(lexem))
         ? atoi((const char*)lexem)
         : DEFAULT_FAVORITES_DISPERSION;
     }
@@ -209,8 +206,7 @@ class FavoritesManager
     {
       char lexem[2];
       memset(lexem, 0, 2);
-      strcpy(lexem, getLexNo(statusText, 4));
-      return lexem != NULL
+      return getLexNo(statusText, 4, lexem, sizeof(lexem))
         ? !strcmp(lexem, "1")
         : 0;
     }
@@ -219,23 +215,21 @@ class FavoritesManager
     {
       char lexem[2];
       memset(lexem, 0, 2);
-      strcpy(lexem, getLexNo(statusText, modeId + 5));
-      return lexem != NULL
+      return getLexNo(statusText, modeId + 5, lexem, sizeof(lexem))
         ? !strcmp(lexem, "1")
         : false;
     }
 
-    static char* getLexNo(const char* statusText, uint8_t pos)        // служебная функция, разбивает команду statusText на лексемы ("слова", разделённые пробелами) и возвращает указанную по счёту лексему
+    static bool getLexNo(const char* statusText, uint8_t pos, char* out, size_t outSize) // безопасно копирует выбранную лексему в буфер вызывающего кода
     {
-      if (!isStatusTextCorrect(statusText))
+      if (!out || outSize == 0U || !isStatusTextCorrect(statusText))
       {
-        return NULL;
+        return false;
       }
 
-      const uint8_t buffSize = MAX_UDP_BUFFER_SIZE;
-      char buff[buffSize];
-      memset(buff, 0, buffSize);
-      strcpy(buff, statusText);
+      char buff[MAX_UDP_BUFFER_SIZE];
+      memset(buff, 0, sizeof(buff));
+      strlcpy(buff, statusText, sizeof(buff));
 
       uint8_t lexPos = 0;
       char* p = strtok(buff, " ");
@@ -243,14 +237,15 @@ class FavoritesManager
       {
         if (lexPos == pos)
         {
-          return p;
+          strlcpy(out, p, outSize);
+          return true;
         }
 
         p = strtok(NULL, " ");
         lexPos++;
       }
 
-      return NULL;
+      return false;
     }
 
 #ifdef USE_SHUFFLE_FAVORITES

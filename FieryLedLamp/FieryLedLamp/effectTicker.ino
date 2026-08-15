@@ -3,8 +3,8 @@
 // 2. в файле Constants.h - придумываются названия "EFF_......" и задаются порядковые номера эффектам. В конце указывается общее количество MODE_AMOUNT.
 // 3. там же в файле Constants.h ниже - задаётся Реестр эффектов для передачи в приложение. 
 //    Он живёт отдельно.  Если у вас приложение не поддерживает запрос списка эффектов у лампы, реестр можно не менять.
-// 4. там же в файле Constants.h ещё ниже - задаётся Массив настроек эффектов по умолчанию.
-//    Просто добавьте строчку для своего нового эффекта в нужное место. Это тоже не обязательно.
+// 4. в файле effect.ini задаются настройки эффектов по умолчанию.
+//    Для нового эффекта добавьте строку с тем же порядковым номером.
 // 5. здесь в файле effectTicker.ino - подключается процедура вызова эффекта на соответствующий ей "EFF_......"
 //    Можно подключать один и тот же эффект под разными номерами. Например: EFF_FIRE (24U), EFF_FIRE2 (25U), EFF_FIRE3 (26U). Будет три огня для разных цветов.
 // Для удобства изменения всех этих списков и настроек в архиве с прошивкой есть файл "таблица_эффектов.xls". 
@@ -177,21 +177,24 @@ void changePower()
 {
   uint8_t k;
   if (dawnFlag == 2) {
-      k = DAWN_BRIGHT;
+      k = effectBrightnessToFastLED(DAWN_BRIGHT);
       //Serial.print("dawnFlag = ");
       //Serial.println(dawnFlag);
       //dawnFlag = 0;
   }
   else if (sunsetFlag == 2) {
-      k = SUNSET_BRIGHT;
+      k = effectBrightnessToFastLED(SUNSET_BRIGHT);
   }
   else  if (AutoBrightness && !day_night)      
-          k = constrain(modes[currentMode].Brightness >> AutoBrightness, 1, 100); // Автоматическая яркость
+          k = effectBrightnessToFastLED(constrain(modes[currentMode].Brightness >> AutoBrightness, 1, EFFECT_BRIGHTNESS_MAX)); // Автоматическая яркость
        else
-         k = modes[currentMode].Brightness;
+         k = effectBrightnessToFastLED(modes[currentMode].Brightness);
 
   if (ONflag && !dawnFlag && !sunsetFlag)
   {
+
+    loadingFlag = true;
+    effTimer = millis() - 1000UL;
     effectsTick();
     #if defined(MOSFET_PIN) && defined(MOSFET_LEVEL)      // установка сигнала в пин, управляющий MOSFET транзистором
     digitalWrite(MOSFET_PIN, MOSFET_LEVEL);
@@ -229,69 +232,6 @@ void changePower()
     }
   }
 // Сброс таймера автоотключения
-  TimerManager::TimerRunning = false;
-  TimerManager::TimerHasFired = false;
-  TimerManager::TimeToFire = 0ULL;
-  jsonWrite(configSetup, "tmr", 0);
-    if (ONflag && AUTOMATIC_OFF_TIME) {
-      TimerManager::TimerRunning = true;
-      TimerManager::TimeToFire = millis() + AUTOMATIC_OFF_TIME;
-    }  
-  if (!ONflag && FavoritesManager::UseSavedFavoritesRunning == 0U) // если выбрана опция Сохранять состояние (вкл/выкл) "избранного",
-  {                                                                // то ни выключение модуля, ни выключение матрицы не сбрасывают текущее состояние (вкл/выкл) "избранного"
-      FavoritesManager::TurnFavoritesOff();
-      jsonWrite(configSetup, "cycle_on", 0);
-  }
-
-  #if USE_MQTT
-  if (espMode == 1U)
-  {
-    MqttManager::needToPublish = true;
-  }
-  #endif
-else
-  uint8_t k;
-  if (sunsetFlag == 2) {
-      k = SUNSET_BRIGHT;
-  }
-  else  if (AutoBrightness && !day_night)      
-          k = constrain(modes[currentMode].Brightness >> AutoBrightness, 1, 100); // Автоматическая яркость
-       else
-         k = modes[currentMode].Brightness;
-
-  if (ONflag && !sunsetFlag)
-  {
-    effectsTick();
-    for (uint8_t i = 0U; i < k; i = constrain(i + (k < 60 ? 1 : 4), 0, k))
-    {
-      FastLED.setBrightness(i);
-      FastLED.show();
-      delay(1);
-    }
-    SetBrightness(modes[currentMode].Brightness);
-    delay(2);
-    FastLED.show();
-  }
-  else
-  {
-    if(sunsetFlag != 2) effectsTick();
-    else sunsetFlag = 0;
-    for (uint8_t i = k; i > 0; i = constrain(i - (k < 60 ? 1 : 4), 0, k))
-    {
-      FastLED.setBrightness(i);
-      delay(1);
-      FastLED.show();
-    }
-    FastLED.clear();
-    delay(2);
-    FastLED.show();
-    if (ONflag) 
-    {
-        changePower();
-        return;
-    }
-  }
-  // Сброс таймера автоотключения
   TimerManager::TimerRunning = false;
   TimerManager::TimerHasFired = false;
   TimerManager::TimeToFire = 0ULL;

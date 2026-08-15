@@ -573,19 +573,27 @@ void OtaPackageHandle() {
   otaPkgPending = false;
   otaPkgBusy = true;
 
-  if (otaPkgPendingSaveCfg) {
-  if (!saveConfigBackupToPartition(true)) {
+  if (!saveEffectSettingsNow(false)) {
     otaPkgBusy = false;
-    String err = getConfigRestoreMessage();
-    otaPkgStatus = String(F("Ошибка: ")) + (err.length() ? err : String(F("Не удалось сохранить настройки")));
+    otaPkgStatus = F("Ошибка: не удалось сохранить настройки эффектов в EEPROM");
     return;
   }
 
-  otaPkgStatus = F("Настройки сохранены");
-  otaStatusPause(800);
-} else {
-  clearConfigRestorePending();
-}
+  if (otaPkgPendingSaveCfg) {
+    // Сохраняем config*.json и старый /effect.ini. После установки
+    // littlefs.bin старая и новая версии effect.ini будут проверены и слиты.
+    if (!saveConfigBackupToPartition(true)) {
+      otaPkgBusy = false;
+      String err = getConfigRestoreMessage();
+      otaPkgStatus = String(F("Ошибка: ")) + (err.length() ? err : String(F("Не удалось сохранить настройки")));
+      return;
+    }
+
+    otaPkgStatus = F("Настройки и effect.ini сохранены");
+    otaStatusPause(800);
+  } else {
+    clearConfigRestorePending();
+  }
 
   EepromManager::SaveWifiBackupForGitHubOta(configSetup);
   otaPkgStatus = F("Обновление...");
