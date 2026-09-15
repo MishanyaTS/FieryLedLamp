@@ -29,7 +29,7 @@ float   trackingObjectShift[trackingOBJECT_MAX_COUNT];
 uint8_t trackingObjectHue[trackingOBJECT_MAX_COUNT];
 uint8_t trackingObjectState[trackingOBJECT_MAX_COUNT];
 bool    trackingObjectIsShift[trackingOBJECT_MAX_COUNT];
-#define enlargedOBJECT_MAX_COUNT                     (WIDTH_MAX * 2U) // максимальное количество сложных отслеживаемых объектов (меньше, чем trackingOBJECT_MAX_COUNT)
+#define enlargedOBJECT_MAX_COUNT                     (((WIDTH_MAX * 2U) < trackingOBJECT_MAX_COUNT) ? (WIDTH_MAX * 2U) : trackingOBJECT_MAX_COUNT) // Не больше общих массивов trackingObject* и диапазона uint8_t
 uint8_t enlargedObjectNUM;                                       // используемое в эффекте количество объектов
 long    enlargedObjectTime[enlargedOBJECT_MAX_COUNT];
 float    liquidLampHot[enlargedOBJECT_MAX_COUNT];
@@ -2392,8 +2392,8 @@ void showWarning(
 // далее идут общие процедуры для эффектов от Stefan Petrick, а непосредственно Комета - в самом низу
 //const uint8_t CENTER_X_MINOR =  (WIDTH / 2) -  ((WIDTH - 1) & 0x01);
 //const uint8_t CENTER_Y_MINOR = (HEIGHT / 2) - ((HEIGHT - 1) & 0x01);
-int8_t zD;
-int8_t zF;
+int16_t zD;
+int16_t zF; // Промежуточные координаты могут быть за границами панели 128 пикселей
 // The coordinates for 3 16-bit noise spaces.
 #define NUM_LAYERS 1 // в кометах используется 1 слой, но для огня 2018 нужно 2
 
@@ -6721,8 +6721,8 @@ void drawPixelXYFseamless(float x, float y, CRGB color)
                   };
   // multiply the intensities by the colour, and saturating-add them to the pixels
   for (uint8_t i = 0; i < 4; i++) {
-    uint8_t xn = (int8_t)(x + (i & 1)) % WIDTH;
-    uint8_t yn = (int8_t)(y + ((i >> 1) & 1)) % HEIGHT;
+    uint8_t xn = (int16_t)(x + (i & 1)) % WIDTH;
+    uint8_t yn = (int16_t)(y + ((i >> 1) & 1)) % HEIGHT;
     CRGB clr = getPixColorXY(xn, yn);
     clr.r = qadd8(clr.r, (color.r * wu[i]) >> 8);
     clr.g = qadd8(clr.g, (color.g * wu[i]) >> 8);
@@ -8313,8 +8313,8 @@ void wu_pixel_maxV(int16_t item) {
                   };
   // multiply the intensities by the colour, and saturating-add them to the pixels
   for (uint8_t i = 0; i < 4; i++) {
-    uint8_t x1 = (int8_t)(trackingObjectPosX[item] + (i & 1)) % WIDTH; //делаем бесшовный по ИКСу
-    uint8_t y1 = (int8_t)(trackingObjectPosY[item] + ((i >> 1) & 1));
+    uint8_t x1 = (int16_t)(trackingObjectPosX[item] + (i & 1)) % WIDTH; //делаем бесшовный по ИКСу
+    uint8_t y1 = (int16_t)(trackingObjectPosY[item] + ((i >> 1) & 1));
     if (y1 < HEIGHT && trackingObjectHue[item] * wu[i] >> 8 >= noise3d[1][x1][y1]) {
       noise3d[0][x1][y1] = trackingObjectShift[item];
       shiftValue[y1] = 255U;//saturation;

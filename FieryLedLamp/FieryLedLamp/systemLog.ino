@@ -24,8 +24,24 @@ String SystemLog::getAll() {
 
 void SystemLog::addPrefixIfNeeded() {
   if (!_lineStart) return;
-  char prefix[24];
-  snprintf(prefix, sizeof(prefix), "[%10lu] ", (unsigned long)millis());
+
+  char prefix[32];
+
+  if (timeSynched) {
+    time_t currentLocalTime = getCurrentLocalTime();
+    snprintf(prefix, sizeof(prefix), "[%02d:%02d:%02d] ",
+             hour(currentLocalTime),
+             minute(currentLocalTime),
+             second(currentLocalTime));
+  } else {
+    unsigned long totalSeconds = millis() / 1000UL;
+    unsigned long hours = totalSeconds / 3600UL;
+    unsigned long minutes = (totalSeconds / 60UL) % 60UL;
+    unsigned long seconds = totalSeconds % 60UL;
+    snprintf(prefix, sizeof(prefix), "[+%02lu:%02lu:%02lu] ",
+             hours, minutes, seconds);
+  }
+
   _buffer += prefix;
   _lineStart = false;
 }

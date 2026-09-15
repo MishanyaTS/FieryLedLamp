@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION      " v7.7.1"
+#define VERSION      " v7.8"
 
 // =============  ВНЕШНЕЕ УПРАВЛЕНИЕ  ============================================================
 #define USE_MQTT 1                                          // Использовать MQTT: 0 - нет, 1 - да
@@ -71,12 +71,12 @@
 #define HEIGHT_DEFAULT        (16U)                         // Высота матрицы по умолчанию
 #define WIDTH_MIN             (8U)                          // Минимальная ширина
 #define HEIGHT_MIN            (8U)                          // Минимальная высота
-#define WIDTH_MAX             (64U)                         // Максимальная ширина
-#define HEIGHT_MAX            (64U)                         // Максимальная высота
+#define WIDTH_MAX             (128U)                        // Максимальная ширина: 8 модулей 16x16 по горизонтали
+#define HEIGHT_MAX            (128U)                        // Максимальная высота: 8 модулей 16x16 по вертикали
 #define MULTI_MATRIX 1                                      // Поддержка использования нескольких последовательно соединённых матриц: 0 - одна матрица, 1 - несколько матриц
 #define SEG_MATRIX_W 1                                      // Количество матриц по горизонтали
 #define SEG_MATRIX_H 1                                      // Количество матриц по вертикали
-#define NUM_LEDS_MAX          (uint16_t)(WIDTH_MAX * HEIGHT_MAX)
+#define NUM_LEDS_MAX          (4096U)                       // Общий предел для всей панели независимо от её формы
 #define MAX_NOISE_DIMENSION   ((WIDTH_MAX > HEIGHT_MAX) ? WIDTH_MAX : HEIGHT_MAX)
 extern uint8_t matrixWidth;
 extern uint8_t matrixHeight;
@@ -88,7 +88,7 @@ extern bool panelFlip;
 #define WIDTH                 (matrixWidth)
 #define HEIGHT                (matrixHeight)
 extern uint8_t colorOrder;                                  // Значения: 0=RGB, 1=RBG, 2=GRB, 3=GBR, 4=BRG, 5=BGR
-extern uint8_t ledDataLines;                                // 1 или 2 DATA-линии для матриц больше 1024 LED
+extern uint8_t ledDataLines;                                // 1 или 2 DATA-линии для матриц больше 2048 LED
 
 // =============  РАЗНОЕ  ========================================================================
 #define ESP_CONF_TIMEOUT        (60U)                       // Время в секундах, которое лампа будет ждать от вас ввода пароля для ОТА обновления (пароль совпадает с паролем точки доступа)
@@ -107,8 +107,8 @@ extern uint8_t ledDataLines;                                // 1 или 2 DATA-�
 // =============  РАЗДЕЛЕНИЕ КОНТАКТОВ МОДУЛЯ  ===================================================
 // --- ESP_PIN_OUT ESP32-S3 ---
 #define LED_PIN               (14U)                         // Пин ленты
-#define LED_PIN_2             (2U)                          // Второй пин ленты для матриц больше 32x32
-#define LED_2LINES_AFTER_LEDS (1024U)                       // 1 линия до 32x32 включительно (1024 светодиода), 2 линии если светодиодов больше
+#define LED_PIN_2             (2U)                          // Вторая DATA-линия: начиная со светодиода 2049
+#define LED_2LINES_AFTER_LEDS (2048U)                       // При выборе 2 линий: первые 2048 LED на LED_PIN, остальные на LED_PIN_2
 #define BTN_PIN               (7U)                          // Пин кнопки
 #define I2C_SDA               (8U)                          // DS3231 SDA pin
 #define I2C_SCL               (9U)                          // DS3231 SCL pin

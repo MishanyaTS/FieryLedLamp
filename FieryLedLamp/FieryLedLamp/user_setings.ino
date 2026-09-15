@@ -116,7 +116,7 @@ void User_setings ()  {
  HTTP.on("/m_o", handle_matrix_orientation); // Выбор ориентации марицы
  HTTP.on("/color_order", handle_color_order);
  HTTP.on("/matrix_size", handle_matrix_size); // Размер матрицы
- HTTP.on("/data_lines", handle_data_lines);   // Выбор 1/2 DATA-линий для матриц больше 1024 LED
+ HTTP.on("/data_lines", handle_data_lines);   // Выбор 1/2 DATA-линий для матриц больше 2048 LED
  HTTP.on("/matrix_segments", handle_matrix_segments); // Несколько последовательно соединённых матриц
  HTTP.on("/panel_flip", handle_panel_flip); // Переворот всей панели
  HTTP.on("/ssdp", handle_ssdp);  // Имя лампы
@@ -2573,12 +2573,19 @@ void handle_color_order() {
     HTTP.send(200, F("application/json"), F("{\"should_refresh\": \"true\"}"));
 }
 
+static void sendMatrixConfigError() {
+    HTTP.send(400, F("application/json"), F("{\"success\":false,\"should_refresh\":false,\"message\":\"Настройки не сохранены. Количество светодиодов больше 4096.\"}"));
+}
+
 void handle_matrix_size ()   {
     String configHardware = readFile(F("config_hardware.json"), 1024);
     if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
-    uint8_t newWidth = constrain(HTTP.arg("m_w").toInt(), WIDTH_MIN, WIDTH_MAX);
-    uint8_t newHeight = constrain(HTTP.arg("m_h").toInt(), HEIGHT_MIN, HEIGHT_MAX);
-    applyMatrixSegments(newWidth, newHeight, segMatrixW, segMatrixH);
+    long newWidth = HTTP.arg("m_w").toInt();
+    long newHeight = HTTP.arg("m_h").toInt();
+    if (!applyMatrixSegments(newWidth, newHeight, segMatrixW, segMatrixH)) {
+        sendMatrixConfigError();
+        return;
+    }
     jsonWrite(configHardware, "m_w", segWidth);
     jsonWrite(configHardware, "m_h", segHeight);
     jsonWrite(configHardware, "segMatrix_w", segMatrixW);
@@ -2604,12 +2611,15 @@ void handle_matrix_segments() {
     String configHardware = readFile(F("config_hardware.json"), 2048);
     if (configHardware == F("Failed") || configHardware == F("Large")) configHardware = F("{}");
 
-    uint8_t oneWidth = HTTP.hasArg("m_w") ? constrain(HTTP.arg("m_w").toInt(), WIDTH_MIN, WIDTH_MAX) : segWidth;
-    uint8_t oneHeight = HTTP.hasArg("m_h") ? constrain(HTTP.arg("m_h").toInt(), HEIGHT_MIN, HEIGHT_MAX) : segHeight;
-    uint8_t countW = HTTP.hasArg("segMatrix_w") ? constrain(HTTP.arg("segMatrix_w").toInt(), 1, max(1U, (unsigned int)(WIDTH_MAX / oneWidth))) : segMatrixW;
-    uint8_t countH = HTTP.hasArg("segMatrix_h") ? constrain(HTTP.arg("segMatrix_h").toInt(), 1, max(1U, (unsigned int)(HEIGHT_MAX / oneHeight))) : segMatrixH;
+    long oneWidth = HTTP.hasArg("m_w") ? HTTP.arg("m_w").toInt() : segWidth;
+    long oneHeight = HTTP.hasArg("m_h") ? HTTP.arg("m_h").toInt() : segHeight;
+    long countW = HTTP.hasArg("segMatrix_w") ? HTTP.arg("segMatrix_w").toInt() : segMatrixW;
+    long countH = HTTP.hasArg("segMatrix_h") ? HTTP.arg("segMatrix_h").toInt() : segMatrixH;
 
-    applyMatrixSegments(oneWidth, oneHeight, countW, countH);
+    if (!applyMatrixSegments(oneWidth, oneHeight, countW, countH)) {
+        sendMatrixConfigError();
+        return;
+    }
 
     jsonWrite(configHardware, "m_w", segWidth);
     jsonWrite(configHardware, "m_h", segHeight);

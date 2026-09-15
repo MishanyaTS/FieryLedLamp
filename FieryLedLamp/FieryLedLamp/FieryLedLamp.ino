@@ -449,24 +449,27 @@ static uint8_t clampMatrixByte(long value, uint8_t minValue, uint8_t maxValue, u
   return (uint8_t)value;
 }
 
-static void applyMatrixSegments(uint8_t oneWidth, uint8_t oneHeight, uint8_t countW, uint8_t countH)
+static bool matrixSegmentsValid(long oneWidth, long oneHeight, long countW, long countH)
 {
-  segWidth = constrain(oneWidth, WIDTH_MIN, WIDTH_MAX);
-  segHeight = constrain(oneHeight, HEIGHT_MIN, HEIGHT_MAX);
-  segMatrixW = countW < 1U ? 1U : countW;
-  segMatrixH = countH < 1U ? 1U : countH;
+  if (oneWidth < WIDTH_MIN || oneWidth > WIDTH_MAX ||
+      oneHeight < HEIGHT_MIN || oneHeight > HEIGHT_MAX ||
+      countW < 1L || countH < 1L) return false;
 
-  uint16_t totalW = (uint16_t)segWidth * segMatrixW;
-  uint16_t totalH = (uint16_t)segHeight * segMatrixH;
+  if (countW > WIDTH_MAX / oneWidth || countH > HEIGHT_MAX / oneHeight) return false;
+  return (uint32_t)oneWidth * oneHeight * countW * countH <= NUM_LEDS_MAX;
+}
 
-  while (segMatrixW > 1U && totalW > WIDTH_MAX)  { segMatrixW--; totalW = (uint16_t)segWidth * segMatrixW; }
-  while (segMatrixH > 1U && totalH > HEIGHT_MAX) { segMatrixH--; totalH = (uint16_t)segHeight * segMatrixH; }
+static bool applyMatrixSegments(long oneWidth, long oneHeight, long countW, long countH)
+{
+  if (!matrixSegmentsValid(oneWidth, oneHeight, countW, countH)) return false;
 
-  if (totalW < WIDTH_MIN) totalW = WIDTH_MIN;
-  if (totalH < HEIGHT_MIN) totalH = HEIGHT_MIN;
-
-  matrixWidth = (uint8_t)totalW;
-  matrixHeight = (uint8_t)totalH;
+  segWidth = (uint8_t)oneWidth;
+  segHeight = (uint8_t)oneHeight;
+  segMatrixW = (uint8_t)countW;
+  segMatrixH = (uint8_t)countH;
+  matrixWidth = (uint8_t)(oneWidth * countW);
+  matrixHeight = (uint8_t)(oneHeight * countH);
+  return true;
 }
 
 static inline bool matrixUseTwoDataLines()
@@ -474,43 +477,12 @@ static inline bool matrixUseTwoDataLines()
   return (NUM_LEDS > LED_2LINES_AFTER_LEDS && ledDataLines == 2U);
 }
 
-static inline bool matrixConnectionRotated()
-{
-  return (ORIENTATION == 1U || ORIENTATION == 3U || ORIENTATION == 5U || ORIENTATION == 7U);
-}
-
-static inline uint16_t matrixPhysicalRowLength()
-{
-  return matrixConnectionRotated() ? (uint16_t)HEIGHT : (uint16_t)WIDTH;
-}
-
-static inline uint16_t matrixPhysicalRows()
-{
-  return matrixConnectionRotated() ? (uint16_t)WIDTH : (uint16_t)HEIGHT;
-}
-
-static uint16_t matrixDataSplitIndex()
-{
-  const uint16_t rowLength = matrixPhysicalRowLength();
-  const uint16_t rowsCount = matrixPhysicalRows();
-  const uint16_t rowsLine1 = rowsCount / 2U;
-  uint16_t splitIndex = rowLength * rowsLine1;
-
-  // Защита от некорректной конфигурации. В норме сюда не попадём.
-  if (splitIndex == 0U || splitIndex >= NUM_LEDS)
-  {
-    splitIndex = NUM_LEDS / 2U;
-  }
-
-  return splitIndex;
-}
-
 template<EOrder RGB_ORDER>
 static void addMatrixLedsForOrder()
 {
   if (matrixUseTwoDataLines())
   {
-    const uint16_t ledsLine1 = matrixDataSplitIndex();
+    const uint16_t ledsLine1 = LED_2LINES_AFTER_LEDS;
     const uint16_t ledsLine2 = NUM_LEDS - ledsLine1;
 
     FastLED.addLeds<WS2812B, LED_PIN,   RGB_ORDER>(&leds[0],         ledsLine1);
@@ -518,8 +490,8 @@ static void addMatrixLedsForOrder()
 
     LOG.printf_P(PSTR("Матрица: %ux%u, %u LED, 2 DATA-линии: GPIO%u = %u LED, GPIO%u = %u LED\n"),
                  WIDTH, HEIGHT, NUM_LEDS, LED_PIN, ledsLine1, LED_PIN_2, ledsLine2);
-    LOG.printf_P(PSTR("Разделение DATA по строкам: строка разрыва %u из %u, длина физической строки %u LED\n"),
-                 matrixPhysicalRows() / 2U, matrixPhysicalRows(), matrixPhysicalRowLength());
+    LOG.printf_P(PSTR("Разрыв DATA после LED %u: LED %u подключить к GPIO%u\n"),
+                 ledsLine1, ledsLine1 + 1U, LED_PIN_2);
   }
   else
   {
@@ -908,16 +880,22 @@ void setup()  //================================================================
 
     uint8_t oneWidth = matrixWidthCfg.length() ? clampMatrixByte(matrixWidthCfg.toInt(), WIDTH_MIN, WIDTH_MAX, WIDTH_DEFAULT) : WIDTH_DEFAULT;
     uint8_t oneHeight = matrixHeightCfg.length() ? clampMatrixByte(matrixHeightCfg.toInt(), HEIGHT_MIN, HEIGHT_MAX, HEIGHT_DEFAULT) : HEIGHT_DEFAULT;
-    uint8_t countW = matrixSegWCfg.length() ? constrain(matrixSegWCfg.toInt(), 1, max(1U, (unsigned int)(WIDTH_MAX / oneWidth))) : 1U;
-    uint8_t countH = matrixSegHCfg.length() ? constrain(matrixSegHCfg.toInt(), 1, max(1U, (unsigned int)(HEIGHT_MAX / oneHeight))) : 1U;
+    long countW = matrixSegWCfg.length() ? matrixSegWCfg.toInt() : 1L;
+    long countH = matrixSegHCfg.length() ? matrixSegHCfg.toInt() : 1L;
     panelFlip = (panelFlipCfg.length() && panelFlipCfg.toInt() == 1);
-    applyMatrixSegments(oneWidth, oneHeight, countW, countH);
+    if (!applyMatrixSegments(oneWidth, oneHeight, countW, countH))
+    {
+      if (!applyMatrixSegments(oneWidth, oneHeight, 1L, 1L))
+        applyMatrixSegments(WIDTH_DEFAULT, HEIGHT_DEFAULT, 1L, 1L);
+      LOG.printf_P(PSTR("Недопустимые размеры панели в config_hardware.json. Установлен один модуль %ux%u; предел панели %ux%u и %u LED.\n"),
+                   segWidth, segHeight, WIDTH_MAX, HEIGHT_MAX, NUM_LEDS_MAX);
+    }
 
     bool matrixCfgChanged = false;
-    if (!matrixWidthCfg.length())  { jsonWrite(configHardware, "m_w", segWidth); matrixCfgChanged = true; }
-    if (!matrixHeightCfg.length()) { jsonWrite(configHardware, "m_h", segHeight); matrixCfgChanged = true; }
-    if (!matrixSegWCfg.length())   { jsonWrite(configHardware, "segMatrix_w", segMatrixW); matrixCfgChanged = true; }
-    if (!matrixSegHCfg.length())   { jsonWrite(configHardware, "segMatrix_h", segMatrixH); matrixCfgChanged = true; }
+    if (!matrixWidthCfg.length() || matrixWidthCfg.toInt() != segWidth)  { jsonWrite(configHardware, "m_w", segWidth); matrixCfgChanged = true; }
+    if (!matrixHeightCfg.length() || matrixHeightCfg.toInt() != segHeight) { jsonWrite(configHardware, "m_h", segHeight); matrixCfgChanged = true; }
+    if (!matrixSegWCfg.length() || matrixSegWCfg.toInt() != segMatrixW)   { jsonWrite(configHardware, "segMatrix_w", segMatrixW); matrixCfgChanged = true; }
+    if (!matrixSegHCfg.length() || matrixSegHCfg.toInt() != segMatrixH)   { jsonWrite(configHardware, "segMatrix_h", segMatrixH); matrixCfgChanged = true; }
     if (!panelFlipCfg.length())    { jsonWrite(configHardware, "panel_flip", panelFlip ? 1 : 0); matrixCfgChanged = true; }
     if (matrixCfgChanged) writeFile(F("config_hardware.json"), configHardware);
 

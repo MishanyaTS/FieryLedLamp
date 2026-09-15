@@ -303,12 +303,12 @@ uint8_t getBrightnessForPrintTime()     // определение яркости
 }
 
 
-void drawLetter(uint8_t subleter, uint8_t letter, int8_t offset, CRGB letterColor, CRGB letterFon)
+void drawLetter(uint8_t subleter, uint8_t letter, int16_t offset, CRGB letterColor, CRGB letterFon)
 {
  
   uint8_t start_pos = 0, finish_pos = LET_WIDTH;
 
-  if (offset < (int8_t)-LET_WIDTH || offset > (int8_t)WIDTH)
+  if (offset < -(int16_t)LET_WIDTH || offset > (int16_t)WIDTH)
   {
     return;
   }
@@ -316,7 +316,7 @@ void drawLetter(uint8_t subleter, uint8_t letter, int8_t offset, CRGB letterColo
   {
     start_pos = (uint8_t)-offset;
   }
-  if (offset > (int8_t)(WIDTH - LET_WIDTH))
+  if (offset > (int16_t)(WIDTH - LET_WIDTH))
   {
     finish_pos = (uint8_t)(WIDTH - offset);
   }
