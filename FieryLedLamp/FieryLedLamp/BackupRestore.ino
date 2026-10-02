@@ -886,3 +886,73 @@ void BackupRestoreInit() {
   HTTP.on("/backup_config", HTTP_GET, handleBackupConfigDownload);
   HTTP.on("/restore_config", HTTP_POST, handleRestoreConfigFinish, handleRestoreConfigUpload);
 }
+
+
+// ============================================================================
+// Web Flasher: сохранение всех настроек перед прошивкой через USB/Web Serial.
+// Команда с ПК: WEBFLASH_BACKUP\n
+// Ответ:
+//   WEBFLASH_BACKUP_START
+//   WEBFLASH_BACKUP_OK
+// или WEBFLASH_BACKUP_ERROR:<причина>
+// ============================================================================
+void handleWebFlashBackupSerial() {
+  static String webFlashCommand;
+
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+
+    if (c == '\r') continue;
+
+    if (c != '\n') {
+      if (webFlashCommand.length() < 64U) {
+        webFlashCommand += c;
+      } else {
+        webFlashCommand = "";
+      }
+      continue;
+    }
+
+    webFlashCommand.trim();
+
+    if (webFlashCommand == F("WEBFLASH_BACKUP")) {
+      Serial.println(F("WEBFLASH_BACKUP_START"));
+      Serial.flush();
+
+      // Повторяем подготовку, используемую перед GitHub OTA:
+      // 1. сохраняем актуальные параметры эффектов в EEPROM;
+      // 2. сохраняем config*.json, weather_city.json и effect.ini
+      //    в отдельный раздел backup и ставим флаг восстановления;
+      // 3. отдельно сохраняем Wi-Fi параметры в EEPROM как резерв.
+      if (!saveEffectSettingsNow(false)) {
+        Serial.println(F("WEBFLASH_BACKUP_ERROR:effects"));
+        Serial.flush();
+        webFlashCommand = "";
+        return;
+      }
+
+      if (!saveConfigBackupToPartition(true)) {
+        String err = getConfigRestoreMessage();
+        Serial.print(F("WEBFLASH_BACKUP_ERROR:"));
+        Serial.println(err.length() ? err : String(F("backup")));
+        Serial.flush();
+        webFlashCommand = "";
+        return;
+      }
+
+      if (!EepromManager::SaveWifiBackupForGitHubOta(configSetup)) {
+        clearConfigRestorePending();
+        EepromManager::ClearWifiBackupPending();
+        Serial.println(F("WEBFLASH_BACKUP_ERROR:wifi"));
+        Serial.flush();
+        webFlashCommand = "";
+        return;
+      }
+
+      Serial.println(F("WEBFLASH_BACKUP_OK"));
+      Serial.flush();
+    }
+
+    webFlashCommand = "";
+  }
+}
