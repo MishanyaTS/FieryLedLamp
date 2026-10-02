@@ -81,6 +81,7 @@ bool mergeEffectSettingsForRestore(const char* savedFileName,
                                    bool useEepromFallback);
 bool isConfigRestorePending();
 void clearConfigRestorePending();
+void handleWebFlashBackupSerial();
 #include "TimerManager.h"
 #if USE_BLYNK
 String blynkToken;
